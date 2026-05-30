@@ -5,7 +5,6 @@
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 
 export default defineConfig({
-  cloudflare: false,
   tanstackStart: {
     // SSR-Entry bleibt unsere eigene src/server.ts (Error-Wrapper).
     server: { entry: "server" },
