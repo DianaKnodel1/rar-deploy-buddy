@@ -32,15 +32,13 @@ interface Payload {
   tenant_id: string;
   full_name?: string;
   redirect_to?: string;
-  profile?: Record<string, unknown>;
-  application_id?: string | null;
 }
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
-    const { email, password, tenant_id, full_name, redirect_to, profile, application_id } = (await req.json()) as Payload;
+    const { email, password, tenant_id, full_name, redirect_to } = (await req.json()) as Payload;
 
     if (!email || !password || !tenant_id) {
       return json({ error: "Missing required fields: email, password, tenant_id" }, 400);
@@ -100,22 +98,6 @@ serve(async (req) => {
       }
     }
     const userId = linkData!.user!.id;
-
-    // 2b. Profil mit allen Registrierungs-Daten befüllen (Service Role umgeht RLS,
-    // da der User die E-Mail noch nicht bestätigt hat und somit keine Session hat).
-    if (profile && typeof profile === "object") {
-      const profileUpdate: Record<string, unknown> = { ...profile, tenant_id };
-      if (application_id) profileUpdate.application_id = application_id;
-      const { error: pErr } = await supabaseAdmin
-        .from("profiles")
-        .update(profileUpdate)
-        .eq("user_id", userId);
-      if (pErr) {
-        console.error("Profile update failed:", pErr);
-        // kein Hard-Fail: Account ist bereits angelegt, Daten können später nachgetragen werden
-      }
-    }
-
     // WICHTIG: Wir verwenden NICHT properties.action_link (der wird von Mail-Scannern
     // wie Gmail beim Prefetch konsumiert → otp_expired). Stattdessen bauen wir einen
     // Link auf unsere eigene /auth/confirmed-Seite mit token_hash. Die Seite ruft
