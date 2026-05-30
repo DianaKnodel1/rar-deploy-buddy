@@ -3,15 +3,11 @@ import { createClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 
 function createSupabaseClient() {
-  // Self-hosted Supabase (api.mb-portal.com) – Werte fest verdrahtet,
-  // damit der Lovable-Preview auch ohne gesetzte VITE_*-Build-Variablen funktioniert.
-  const SUPABASE_URL =
-    import.meta.env.VITE_SUPABASE_URL ||
-    (typeof process !== 'undefined' ? process.env.SUPABASE_URL : undefined) ||
-    'https://api.mb-portal.com';
+  // Self-hosted Supabase (api.mb-portal.com) – absichtlich fest verdrahtet.
+  // Die Frontend-Umgebung enthält noch alte VITE_*-Werte; würden wir diese
+  // priorisieren, landet der Login wieder auf wgciv...supabase.co.
+  const SUPABASE_URL = 'https://api.mb-portal.com';
   const SUPABASE_PUBLISHABLE_KEY =
-    import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
-    (typeof process !== 'undefined' ? process.env.SUPABASE_PUBLISHABLE_KEY : undefined) ||
     'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlIiwiaWF0IjoxNzc3MDY4MDAwLCJleHAiOjE5MzQ4MzQ0MDB9.e6amaZA_liDEuRmH1TaHZaDOcDT8Io-M5SP2VdDTYeA';
 
   if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
