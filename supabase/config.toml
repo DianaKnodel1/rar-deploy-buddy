@@ -1,0 +1,7 @@
+project_id = "lovable"
+
+[functions.process-employee-reminders]
+verify_jwt = false
+
+[functions.send-signup-confirmation]
+verify_jwt = false
