@@ -27,8 +27,23 @@ function LoginPage() {
     e.preventDefault();
     setLoading(true);
     setNeedsVerify(false);
-    const { data, error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
-    setLoading(false);
+    let data: Awaited<ReturnType<typeof supabase.auth.signInWithPassword>>["data"] | null = null;
+    let error: Awaited<ReturnType<typeof supabase.auth.signInWithPassword>>["error"] | null = null;
+    try {
+      const res = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+      data = res.data;
+      error = res.error;
+    } catch (e: any) {
+      toast({
+        title: "Anmeldung fehlgeschlagen",
+        description: e?.message ?? "Unerwarteter Fehler. Bitte später erneut versuchen.",
+        variant: "destructive",
+      });
+      setLoading(false);
+      return;
+    } finally {
+      setLoading(false);
+    }
     if (error) {
       const msg = (error.message || "").toLowerCase();
       if (msg.includes("email not confirmed") || msg.includes("not confirmed")) {
