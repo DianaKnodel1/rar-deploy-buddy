@@ -95,7 +95,7 @@ function AdminChatPage() {
     const profiles = profilesRes.data ?? [];
     if (!profiles.length) { setLoading(false); return; }
     const profileMap = new Map(profiles.map((p: any) => [p.user_id, p.full_name as string]));
-    const convMap = new Map((convsRes.data ?? []).map((c: any) => [c.user_id, c]));
+    const convMap = new Map<string, any>((convsRes.data ?? []).map((c: any) => [c.user_id, c]));
 
     type Agg = { lastMessage: string; lastAt: string; unread: number };
     const agg = new Map<string, Agg>();
