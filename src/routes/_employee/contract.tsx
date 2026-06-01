@@ -413,8 +413,8 @@ function ContractPage() {
                   >
                     <p className="font-medium text-foreground text-sm">{EMPLOYMENT_LABELS[t]}</p>
                     <p className="text-[11px] text-muted-foreground mt-0.5">
-                      {t === "minijob" && "Geringfügige Beschäftigung bis 538 € im Monat"}
-                      {t === "teilzeit" && "Teilzeitanstellung mit festgelegten Stunden"}
+                      {t === "minijob" && "Geringfügige Beschäftigung bis 603 € im Monat"}
+                      {t === "teilzeit" && "Teilzeit mit 25 Stunden / Woche"}
                       {t === "vollzeit" && "Volle Anstellung mit 40 Stunden / Woche"}
                     </p>
                   </button>
