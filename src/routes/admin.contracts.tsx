@@ -26,7 +26,8 @@ const EMPLOYMENT_LABELS: Record<string, string> = {
 
 const PLACEHOLDERS = [
   "{{first_name}}", "{{last_name}}", "{{address}}", "{{city}}",
-  "{{employment_type}}", "{{company_name}}", "{{company_ceo_name}}", "{{date}}",
+  "{{employment_type}}", "{{company_name}}", "{{company_ceo_name}}",
+  "{{start_date}}", "{{employment_start_date}}", "{{date}}",
 ];
 
 interface Template {
