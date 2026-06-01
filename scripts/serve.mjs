@@ -35,16 +35,22 @@ const server = Bun.serve({
 
 console.log(`[serve] Portal läuft auf http://${server.hostname}:${server.port}`);
 
-// Bun.serve() allein hält in einigen Bun-/systemd-Kombinationen den Prozess
-// nicht zuverlässig offen. Ein expliziter Keepalive verhindert Restart-Loops.
-const keepAlive = setInterval(() => {}, 24 * 60 * 60 * 1000);
-
 // Sauberer Shutdown bei SIGTERM/SIGINT (wichtig für systemd).
 for (const sig of ["SIGTERM", "SIGINT"]) {
   process.on(sig, () => {
     console.log(`[serve] ${sig} empfangen — beende Server.`);
-    clearInterval(keepAlive);
     server.stop();
     process.exit(0);
   });
 }
+
+process.on("uncaughtException", (err) => {
+  console.error("[serve] uncaughtException:", err);
+});
+process.on("unhandledRejection", (err) => {
+  console.error("[serve] unhandledRejection:", err);
+});
+
+// Bun.serve() allein hält den Prozess in dieser Skript-Konfiguration nicht
+// offen — ein nie auflösendes Promise blockiert das Event-Loop zuverlässig.
+await new Promise(() => {});
