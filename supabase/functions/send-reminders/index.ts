@@ -41,6 +41,12 @@ const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 const jitterDelay = () =>
   sleep(SEND_DELAY_MIN_MS + Math.floor(Math.random() * (SEND_DELAY_MAX_MS - SEND_DELAY_MIN_MS)));
 
+// Strikte SMTP-Validierung: NIEMALS mit unvollständiger / fremder Konfiguration senden.
+// Jeder Tenant darf nur über SEIN EIGENES, vollständig konfiguriertes SMTP versenden.
+function hasValidSmtp(t: TenantRow | null | undefined): t is TenantRow {
+  return !!(t && t.smtp_host && t.smtp_port && t.smtp_username && t.smtp_password && t.sender_email);
+}
+
 interface TenantRow {
   id: string;
   name: string;
