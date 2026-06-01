@@ -12,6 +12,8 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AlertTriangle, Download, CheckCircle2, XCircle, Power, Shield, Mail, User, MapPin, ShieldCheck, FileSignature, CalendarDays, ClipboardList, UserPlus, Trash2, Loader2 } from "lucide-react";
 import { CreateEmployeeWizard } from "@/components/admin/CreateEmployeeWizard";
 import { exportToCsv } from "@/lib/csv-export";
@@ -75,6 +77,11 @@ function AdminEmployeesPage() {
   const [deleteTarget, setDeleteTarget] = useState<{ userId: string; name: string } | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState("");
   const [deleting, setDeleting] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [bulkConfirm, setBulkConfirm] = useState("");
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [activityTab, setActivityTab] = useState<"all" | "active" | "inactive">("all");
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
@@ -90,6 +97,33 @@ function AdminEmployeesPage() {
     } finally {
       setDeleting(false);
     }
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelected((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  };
+  const toggleSelectAllPage = (ids: string[], allSel: boolean) => {
+    setSelected((s) => { const n = new Set(s); if (allSel) ids.forEach((id) => n.delete(id)); else ids.forEach((id) => n.add(id)); return n; });
+  };
+  const handleBulkDelete = async () => {
+    setBulkDeleting(true);
+    const ids = Array.from(selected);
+    let ok = 0, fail = 0;
+    for (const uid of ids) {
+      try {
+        await deleteEmployeeAccount({ data: { user_id: uid, confirm: "MITARBEITER LÖSCHEN" } });
+        ok++;
+      } catch { fail++; }
+    }
+    setProfiles((prev) => prev.filter((p) => !selected.has(p.user_id)));
+    setSelected(new Set());
+    setBulkDeleteOpen(false);
+    setBulkConfirm("");
+    setBulkDeleting(false);
+    toast({
+      title: `${ok} gelöscht${fail ? `, ${fail} fehlgeschlagen` : ""}`,
+      variant: fail ? "destructive" : "default",
+    });
   };
 
   useEffect(() => {
@@ -136,8 +170,16 @@ function AdminEmployeesPage() {
     { key: "task", label: "Auftrag erhalten", done: assignmentByUser.has(p.user_id), icon: ClipboardList },
   ];
 
+  const isFullyActive = (p: any) =>
+    p.status === "angenommen"
+    && p.onboarding_status === "abgeschlossen"
+    && !!p.contract_signed_at
+    && kycByUser.get(p.user_id)?.status === "verifiziert";
+
   const filtered = profiles.filter((p) => {
     if (!(p.full_name ?? "").toLowerCase().includes(search.toLowerCase())) return false;
+    if (activityTab === "active" && !isFullyActive(p)) return false;
+    if (activityTab === "inactive" && (isFullyActive(p) || adminUserIds.has(p.user_id))) return false;
     if (filterStatus && filterStatus !== "all") {
       // Stuck-Filter
       if (filterStatus.startsWith("stuck:")) {
@@ -153,6 +195,9 @@ function AdminEmployeesPage() {
   });
 
   const { paged, page, setPage, pageCount, rangeFrom, rangeTo, total } = usePagination(filtered, 25);
+
+  const activeCount = profiles.filter(isFullyActive).length;
+  const inactiveCount = profiles.filter((p) => !isFullyActive(p) && !adminUserIds.has(p.user_id)).length;
 
 
 
@@ -199,10 +244,45 @@ function AdminEmployeesPage() {
         onCreated={() => loadData()}
       />
 
+      <Tabs value={activityTab} onValueChange={(v) => { setActivityTab(v as any); setPage(1); setSelected(new Set()); }}>
+        <TabsList>
+          <TabsTrigger value="all">Alle ({profiles.length})</TabsTrigger>
+          <TabsTrigger value="active">Aktiv ({activeCount})</TabsTrigger>
+          <TabsTrigger value="inactive">Nicht aktiv ({inactiveCount})</TabsTrigger>
+        </TabsList>
+      </Tabs>
+
+      {selected.size > 0 && (
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-primary/30 bg-primary/5 px-4 py-2.5">
+          <p className="text-sm text-foreground"><strong>{selected.size}</strong> ausgewählt</p>
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 text-xs gap-1 border-destructive/40 text-destructive hover:bg-destructive hover:text-destructive-foreground"
+              onClick={() => { setBulkDeleteOpen(true); setBulkConfirm(""); }}
+            >
+              <Trash2 className="h-3.5 w-3.5" /> {selected.size} löschen
+            </Button>
+            <Button size="sm" variant="ghost" className="h-8 text-xs" onClick={() => setSelected(new Set())}>Abwählen</Button>
+          </div>
+        </div>
+      )}
+
       <div className="border rounded-xl overflow-hidden bg-card shadow-sm">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border bg-muted/30">
+              <th className="text-left px-3 py-3 w-10">
+                <Checkbox
+                  checked={paged.length > 0 && paged.filter((p) => !adminUserIds.has(p.user_id)).every((p) => selected.has(p.user_id))}
+                  onCheckedChange={() => {
+                    const ids = paged.filter((p) => !adminUserIds.has(p.user_id)).map((p) => p.user_id);
+                    const allSel = ids.every((id) => selected.has(id));
+                    toggleSelectAllPage(ids, allSel);
+                  }}
+                />
+              </th>
               <th className="text-left px-5 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">Name</th>
               <th className="text-left px-5 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">Tenant</th>
               <th className="text-left px-5 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">Onboarding</th>
@@ -222,6 +302,14 @@ function AdminEmployeesPage() {
 
               return (
                 <tr key={profile.id} className={`hover:bg-muted/20 transition-colors cursor-pointer group ${isDeactivated ? "opacity-50" : ""}`} onClick={() => navigate(`/admin/employees/${profile.user_id}`)}>
+                  <td className="px-3 py-3.5" onClick={(e) => e.stopPropagation()}>
+                    {!isAdmin && (
+                      <Checkbox
+                        checked={selected.has(profile.user_id)}
+                        onCheckedChange={() => toggleSelect(profile.user_id)}
+                      />
+                    )}
+                  </td>
                   <td className="px-5 py-3.5">
                     <div className="flex items-center gap-2">
                       <div>
@@ -330,6 +418,35 @@ function AdminEmployeesPage() {
             >
               {deleting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Trash2 className="h-4 w-4 mr-2" />}
               Endgültig löschen
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={bulkDeleteOpen} onOpenChange={(o) => { if (!o && !bulkDeleting) { setBulkDeleteOpen(false); setBulkConfirm(""); } }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-destructive flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5" /> {selected.size} Mitarbeiter endgültig löschen
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2 text-sm">
+                <p><strong className="text-foreground">{selected.size}</strong> Mitarbeiter werden vollständig entfernt – inklusive Auth-Accounts, Chats, Verträgen, Aufgaben, KYC und Uploads.</p>
+                <p>Dieser Vorgang ist <strong>nicht umkehrbar</strong>.</p>
+                <p>Tippe zur Bestätigung <code className="bg-muted px-1.5 py-0.5 rounded text-foreground">MITARBEITER LÖSCHEN</code> ein:</p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <Input value={bulkConfirm} onChange={(e) => setBulkConfirm(e.target.value)} placeholder="MITARBEITER LÖSCHEN" autoFocus className="font-mono" />
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={bulkDeleting}>Abbrechen</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleBulkDelete}
+              disabled={bulkConfirm !== "MITARBEITER LÖSCHEN" || bulkDeleting}
+              className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
+            >
+              {bulkDeleting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Trash2 className="h-4 w-4 mr-2" />}
+              {selected.size} endgültig löschen
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
