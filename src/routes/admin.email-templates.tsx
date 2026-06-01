@@ -18,6 +18,26 @@ import { useToast } from "@/hooks/use-toast";
 import { PageHeaderSkeleton } from "@/components/SkeletonLoaders";
 import { Mail, Save, Send, Eye, AlertTriangle, CheckCircle2, Copy, Loader2 } from "lucide-react";
 
+// Defaults für Reminder-Templates (gespiegelt zur Edge Function).
+const REMINDER_DEFAULTS = {
+  invite: {
+    subject: "Erinnerung: Registrierung bei {{tenant_name}} abschließen",
+    body: `Hallo {{first_name}},\n\ndeine Bewerbung bei {{tenant_name}} wurde bereits angenommen, aber du hast deinen Account noch nicht angelegt. Bitte schließe die Registrierung ab, damit es weitergehen kann.\n\n{{cta:Jetzt registrieren|{{portal_link}}}}\n\nOder kopiere diesen Link: {{portal_link}}`,
+  },
+  confirm: {
+    subject: "Bitte bestätige deine E-Mail – {{tenant_name}}",
+    body: `Wir haben deine Bestätigung für {{email}} noch nicht erhalten. Bitte bestätige deine E-Mail, damit du dich anmelden kannst.\n\n{{cta:E-Mail bestätigen|{{confirmation_link}}}}\n\nOder kopiere diesen Link: {{confirmation_link}}`,
+  },
+  completion: {
+    subject: "Bitte schließe deine Registrierung ab – {{tenant_name}}",
+    body: `Hallo {{first_name}},\n\nin deinem Account bei {{tenant_name}} fehlen noch ein paar Angaben (z.B. Personalausweis, Arbeitsvertrag oder Pflichtdaten). Bitte melde dich an und vervollständige dein Profil.\n\n{{cta:Jetzt vervollständigen|{{login_link}}}}\n\nLogin: {{login_link}}`,
+  },
+  no_booking: {
+    subject: "Neue Aufträge warten auf dich – {{tenant_name}}",
+    body: `Hallo {{first_name}},\n\ndu hast seit über 7 Tagen keine Aufträge mehr bei {{tenant_name}} gebucht. Im Portal warten freie Termine — sichere dir jetzt deinen nächsten Einsatz.\n\n{{cta:Aufträge ansehen|{{booking_link}}}}\n\nOder kopiere diesen Link: {{booking_link}}`,
+  },
+};
+
 interface TenantEmail {
   id: string;
   name: string;
@@ -38,6 +58,14 @@ interface TenantEmail {
   email_signature: string | null;
   team_leader_name: string;
   company_email?: string | null;
+  reminder_invite_subject: string | null;
+  reminder_invite_body: string | null;
+  reminder_confirm_subject: string | null;
+  reminder_confirm_body: string | null;
+  reminder_completion_subject: string | null;
+  reminder_completion_body: string | null;
+  reminder_no_booking_subject: string | null;
+  reminder_no_booking_body: string | null;
 }
 
 const PLACEHOLDERS = [
@@ -50,6 +78,9 @@ const PLACEHOLDERS = [
   { key: "tenant_name", label: "Tenant-Name", preview: "BCU Beratung" },
   { key: "support_email", label: "Support-E-Mail", preview: "support@example.com" },
   { key: "reset_link", label: "Reset-Link", preview: "https://portal.example.com/reset-password?token=xyz" },
+  { key: "login_link", label: "Login-Link", preview: "https://portal.example.com/login" },
+  { key: "confirmation_link", label: "Bestätigungs-Link", preview: "https://portal.example.com/auth/confirmed?token_hash=…" },
+  { key: "booking_link", label: "Aufträge-Link", preview: "https://portal.example.com/appointments" },
 ];
 
 function replacePlaceholders(text: string, tenant: TenantEmail): string {
@@ -63,11 +94,19 @@ function replacePlaceholders(text: string, tenant: TenantEmail): string {
     tenant_name: tenant.name,
     support_email: tenant.company_email || tenant.sender_email || "support@example.com",
     reset_link: `https://${tenant.domain}/reset-password?token=demo123`,
+    login_link: `https://${tenant.domain}/login`,
+    confirmation_link: `https://${tenant.domain}/auth/confirmed?token_hash=demo123`,
+    booking_link: `https://${tenant.domain}/appointments`,
   };
   let result = text;
   for (const [key, value] of Object.entries(map)) {
     result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, "g"), value || "");
   }
+  // CTA-Syntax: {{cta:Label|URL}} -> sichtbarer Button (in Vorschau)
+  result = result.replace(/\{\{cta:([^|}]+)\|([^}]+)\}\}/g, (_m, label, href) => {
+    const color = tenant.primary_color || "#0f172a";
+    return `<table cellpadding="0" cellspacing="0" style="margin:16px 0"><tr><td style="background:${color};border-radius:8px"><a href="${String(href).trim()}" style="display:inline-block;padding:14px 28px;color:#fff;text-decoration:none;font-weight:600;font-size:15px">${String(label).trim()}</a></td></tr></table>`;
+  });
   return result;
 }
 
@@ -245,16 +284,27 @@ function AdminEmailTemplatesPage() {
   const [senderName, setSenderName] = useState("");
   const [replyTo, setReplyTo] = useState("");
 
+  // Reminder-Templates
+  const [rInviteSubject, setRInviteSubject] = useState("");
+  const [rInviteBody, setRInviteBody] = useState("");
+  const [rConfirmSubject, setRConfirmSubject] = useState("");
+  const [rConfirmBody, setRConfirmBody] = useState("");
+  const [rCompletionSubject, setRCompletionSubject] = useState("");
+  const [rCompletionBody, setRCompletionBody] = useState("");
+  const [rNoBookingSubject, setRNoBookingSubject] = useState("");
+  const [rNoBookingBody, setRNoBookingBody] = useState("");
+
   const loadTenants = async () => {
     setLoading(true);
-    const { data } = await supabase
+    const { data } = await (supabase as any)
       .from("tenants")
-      .select("id, name, domain, primary_color, logo_url, sender_email, sender_name, reply_to_email, smtp_host, smtp_port, smtp_username, smtp_password, welcome_email_subject, welcome_email_body, reset_email_subject, reset_email_body, email_signature, team_leader_name")
+      .select("id, name, domain, primary_color, logo_url, sender_email, sender_name, reply_to_email, smtp_host, smtp_port, smtp_username, smtp_password, welcome_email_subject, welcome_email_body, reset_email_subject, reset_email_body, email_signature, team_leader_name, reminder_invite_subject, reminder_invite_body, reminder_confirm_subject, reminder_confirm_body, reminder_completion_subject, reminder_completion_body, reminder_no_booking_subject, reminder_no_booking_body")
       .order("name");
-    setTenants((data as any as TenantEmail[]) ?? []);
-    if (data && data.length > 0 && !selectedTenantId) {
-      setSelectedTenantId(data[0].id);
-      loadTenantData(data[0] as any);
+    const rows = (data as TenantEmail[] | null) ?? [];
+    setTenants(rows);
+    if (rows.length > 0 && !selectedTenantId) {
+      setSelectedTenantId(rows[0].id);
+      loadTenantData(rows[0]);
     }
     setLoading(false);
   };
@@ -273,6 +323,14 @@ function AdminEmailTemplatesPage() {
     setSignature(t.email_signature || "");
     setSenderName(t.sender_name || "");
     setReplyTo(t.reply_to_email || "");
+    setRInviteSubject(t.reminder_invite_subject || REMINDER_DEFAULTS.invite.subject);
+    setRInviteBody(t.reminder_invite_body || REMINDER_DEFAULTS.invite.body);
+    setRConfirmSubject(t.reminder_confirm_subject || REMINDER_DEFAULTS.confirm.subject);
+    setRConfirmBody(t.reminder_confirm_body || REMINDER_DEFAULTS.confirm.body);
+    setRCompletionSubject(t.reminder_completion_subject || REMINDER_DEFAULTS.completion.subject);
+    setRCompletionBody(t.reminder_completion_body || REMINDER_DEFAULTS.completion.body);
+    setRNoBookingSubject(t.reminder_no_booking_subject || REMINDER_DEFAULTS.no_booking.subject);
+    setRNoBookingBody(t.reminder_no_booking_body || REMINDER_DEFAULTS.no_booking.body);
   };
 
   useEffect(() => {
@@ -305,6 +363,14 @@ function AdminEmailTemplatesPage() {
         email_signature: signature,
         sender_name: senderName || null,
         reply_to_email: replyTo || null,
+        reminder_invite_subject: rInviteSubject,
+        reminder_invite_body: rInviteBody,
+        reminder_confirm_subject: rConfirmSubject,
+        reminder_confirm_body: rConfirmBody,
+        reminder_completion_subject: rCompletionSubject,
+        reminder_completion_body: rCompletionBody,
+        reminder_no_booking_subject: rNoBookingSubject,
+        reminder_no_booking_body: rNoBookingBody,
       } as any)
       .eq("id", selectedTenantId);
     setSaving(false);
@@ -445,6 +511,9 @@ function AdminEmailTemplatesPage() {
             <TabsTrigger value="reset" className="text-xs gap-1.5">
               <Mail className="h-3.5 w-3.5" /> Passwort zurücksetzen
             </TabsTrigger>
+            <TabsTrigger value="reminders" className="text-xs gap-1.5">
+              <Mail className="h-3.5 w-3.5" /> Erinnerungen
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="welcome">
@@ -471,6 +540,58 @@ function AdminEmailTemplatesPage() {
               onSignatureChange={setSignature}
               tenant={selectedTenant}
             />
+          </TabsContent>
+
+          <TabsContent value="reminders">
+            <div className="rounded-lg border bg-muted/30 px-3 py-2 mb-3 text-[12px] text-muted-foreground">
+              Diese Mails verschickt das System automatisch (max. 5×, mindestens 3 Tage Abstand).
+              Verwende <code>{`{{cta:Label|{{portal_link}}}}`}</code> für einen Button.
+              Plain-Text wird automatisch in HTML umgewandelt.
+            </div>
+            <Tabs defaultValue="invite" className="space-y-3">
+              <TabsList>
+                <TabsTrigger value="invite" className="text-xs">Bewerber: Einladung</TabsTrigger>
+                <TabsTrigger value="confirm" className="text-xs">E-Mail bestätigen</TabsTrigger>
+                <TabsTrigger value="completion" className="text-xs">Registrierung abschließen</TabsTrigger>
+                <TabsTrigger value="no_booking" className="text-xs">Keine Buchung (7 Tage)</TabsTrigger>
+              </TabsList>
+              <TabsContent value="invite">
+                <TemplateEditor
+                  label="Einladungs-Erinnerung"
+                  subject={rInviteSubject} onSubjectChange={setRInviteSubject}
+                  body={rInviteBody} onBodyChange={setRInviteBody}
+                  signature={signature} onSignatureChange={setSignature}
+                  tenant={selectedTenant}
+                />
+              </TabsContent>
+              <TabsContent value="confirm">
+                <TemplateEditor
+                  label="E-Mail-Bestätigungs-Erinnerung"
+                  subject={rConfirmSubject} onSubjectChange={setRConfirmSubject}
+                  body={rConfirmBody} onBodyChange={setRConfirmBody}
+                  signature={signature} onSignatureChange={setSignature}
+                  tenant={selectedTenant}
+                />
+              </TabsContent>
+              <TabsContent value="completion">
+                <TemplateEditor
+                  label="Registrierung-Abschließen-Erinnerung"
+                  subject={rCompletionSubject} onSubjectChange={setRCompletionSubject}
+                  body={rCompletionBody} onBodyChange={setRCompletionBody}
+                  signature={signature} onSignatureChange={setSignature}
+                  tenant={selectedTenant}
+                />
+              </TabsContent>
+              <TabsContent value="no_booking">
+                <TemplateEditor
+                  label="Keine-Buchung-Erinnerung"
+                  subject={rNoBookingSubject} onSubjectChange={setRNoBookingSubject}
+                  body={rNoBookingBody} onBodyChange={setRNoBookingBody}
+                  signature={signature} onSignatureChange={setSignature}
+                  tenant={selectedTenant}
+                />
+              </TabsContent>
+            </Tabs>
           </TabsContent>
         </Tabs>
       )}

@@ -60,6 +60,14 @@ interface TenantRow {
   smtp_port: number | null;
   smtp_username: string | null;
   smtp_password: string | null;
+  reminder_invite_subject: string | null;
+  reminder_invite_body: string | null;
+  reminder_confirm_subject: string | null;
+  reminder_confirm_body: string | null;
+  reminder_completion_subject: string | null;
+  reminder_completion_body: string | null;
+  reminder_no_booking_subject: string | null;
+  reminder_no_booking_body: string | null;
 }
 
 type ReminderType = "invite" | "confirm_email" | "complete_registration" | "no_recent_booking";
@@ -90,7 +98,7 @@ serve(async (req) => {
     // Tenants vorladen
     const { data: tList, error: tErr } = await admin
       .from("tenants")
-      .select("id,name,domain,logo_url,primary_color,sender_email,sender_name,reply_to_email,smtp_host,smtp_port,smtp_username,smtp_password");
+      .select("id,name,domain,logo_url,primary_color,sender_email,sender_name,reply_to_email,smtp_host,smtp_port,smtp_username,smtp_password,reminder_invite_subject,reminder_invite_body,reminder_confirm_subject,reminder_confirm_body,reminder_completion_subject,reminder_completion_body,reminder_no_booking_subject,reminder_no_booking_body");
     if (tErr) return json({ error: tErr.message }, 500);
 
     const tenants = new Map<string, TenantRow>();
@@ -199,8 +207,9 @@ async function runInvites(ctx: SendCtx) {
 
     const portalLink = `https://portal.${tenant.domain}/register`;
     const firstName = app.first_name ?? (app.full_name ?? "").split(" ")[0] ?? "";
-    const html = renderInviteHtml(tenant, firstName, portalLink);
-    const subject = `Erinnerung: Registrierung bei ${tenant.name} abschließen`;
+    const vars = baseVars(tenant, { first_name: firstName, portal_link: portalLink, login_link: portalLink, confirmation_link: portalLink, booking_link: portalLink });
+    const subject = renderSubject(tenant.reminder_invite_subject, DEFAULT_TEMPLATES.invite.subject, vars);
+    const html = renderBodyHtml(tenant, tenant.reminder_invite_body, DEFAULT_TEMPLATES.invite.body, vars);
 
     try {
       await sendMail(tenant, email, subject, html);
@@ -256,8 +265,9 @@ async function runConfirmEmail(ctx: SendCtx) {
       continue;
     }
     const actionLink = `${redirectTo}?token_hash=${encodeURIComponent(tokenHash)}&type=signup`;
-    const html = renderConfirmHtml(tenant, email, actionLink);
-    const subject = `Bitte bestätige deine E-Mail – ${tenant.name}`;
+    const vars = baseVars(tenant, { email, confirmation_link: actionLink, portal_link: actionLink, login_link: actionLink, booking_link: actionLink });
+    const subject = renderSubject(tenant.reminder_confirm_subject, DEFAULT_TEMPLATES.confirm.subject, vars);
+    const html = renderBodyHtml(tenant, tenant.reminder_confirm_body, DEFAULT_TEMPLATES.confirm.body, vars);
 
     try {
       await sendMail(tenant, email, subject, html);
@@ -302,8 +312,9 @@ async function runCompleteRegistration(ctx: SendCtx) {
 
     const firstName = ((p as any).full_name ?? "").split(" ")[0] ?? "";
     const loginLink = `https://portal.${tenant.domain}/login`;
-    const html = renderCompletionHtml(tenant, firstName, loginLink);
-    const subject = `Bitte schließe deine Registrierung ab – ${tenant.name}`;
+    const vars = baseVars(tenant, { first_name: firstName, login_link: loginLink, portal_link: loginLink, booking_link: loginLink, confirmation_link: loginLink });
+    const subject = renderSubject(tenant.reminder_completion_subject, DEFAULT_TEMPLATES.completion.subject, vars);
+    const html = renderBodyHtml(tenant, tenant.reminder_completion_body, DEFAULT_TEMPLATES.completion.body, vars);
 
     try {
       await sendMail(tenant, email, subject, html);
@@ -366,8 +377,9 @@ async function runNoRecentBooking(ctx: SendCtx) {
 
     const firstName = ((p as any).full_name ?? "").split(" ")[0] ?? "";
     const bookingLink = `https://portal.${tenant.domain}/appointments`;
-    const html = renderNoBookingHtml(tenant, firstName, bookingLink);
-    const subject = `Neue Aufträge warten auf dich – ${tenant.name}`;
+    const vars = baseVars(tenant, { first_name: firstName, booking_link: bookingLink, portal_link: bookingLink, login_link: bookingLink, confirmation_link: bookingLink });
+    const subject = renderSubject(tenant.reminder_no_booking_subject, DEFAULT_TEMPLATES.no_booking.subject, vars);
+    const html = renderBodyHtml(tenant, tenant.reminder_no_booking_body, DEFAULT_TEMPLATES.no_booking.body, vars);
 
     try {
       await sendMail(tenant, email, subject, html);
@@ -422,46 +434,100 @@ function btn(brand: string, href: string, label: string): string {
 </td></tr></table>`;
 }
 
-function renderInviteHtml(t: TenantRow, firstName: string, link: string): string {
-  const brand = t.primary_color ?? "#0f172a";
-  const greet = firstName ? `Hallo ${escapeHtml(firstName)},` : "Hallo,";
-  return shellHtml(t, `
-<h1 style="font-size:22px;margin:0 0 16px;color:#0f172a">Erinnerung: Deine Registrierung wartet</h1>
-<p style="font-size:15px;line-height:1.6;color:#475569;margin:0 0 16px">${greet}</p>
-<p style="font-size:15px;line-height:1.6;color:#475569;margin:0 0 24px">deine Bewerbung bei <strong>${escapeHtml(t.name)}</strong> wurde bereits angenommen, aber du hast deinen Account noch nicht angelegt. Bitte schließe die Registrierung ab, damit es weitergehen kann.</p>
-${btn(brand, link, "Jetzt registrieren")}
-<p style="font-size:13px;color:#94a3b8;margin:24px 0 0">Oder kopiere diesen Link: <a href="${link}" style="color:${brand};word-break:break-all">${link}</a></p>`);
+// ─── Tenant-overridable Templates ───
+// Subjects sind Plain-Text (Placeholder werden ersetzt).
+// Bodies sind HTML mit Placeholdern {{...}}. Wenn der Admin im UI Plain-Text
+// schreibt, werden Zeilenumbrüche in <br> konvertiert.
+const DEFAULT_TEMPLATES = {
+  invite: {
+    subject: "Erinnerung: Registrierung bei {{tenant_name}} abschließen",
+    body: `<h1 style="font-size:22px;margin:0 0 16px;color:#0f172a">Erinnerung: Deine Registrierung wartet</h1>
+<p style="font-size:15px;line-height:1.6;color:#475569;margin:0 0 16px">Hallo {{first_name}},</p>
+<p style="font-size:15px;line-height:1.6;color:#475569;margin:0 0 24px">deine Bewerbung bei <strong>{{tenant_name}}</strong> wurde bereits angenommen, aber du hast deinen Account noch nicht angelegt. Bitte schließe die Registrierung ab, damit es weitergehen kann.</p>
+{{cta:Jetzt registrieren|{{portal_link}}}}
+<p style="font-size:13px;color:#94a3b8;margin:24px 0 0">Oder kopiere diesen Link: {{portal_link}}</p>`,
+  },
+  confirm: {
+    subject: "Bitte bestätige deine E-Mail – {{tenant_name}}",
+    body: `<h1 style="font-size:22px;margin:0 0 16px;color:#0f172a">Bitte bestätige deine E-Mail-Adresse</h1>
+<p style="font-size:15px;line-height:1.6;color:#475569;margin:0 0 24px">Wir haben deine Bestätigung für <strong>{{email}}</strong> noch nicht erhalten. Bitte bestätige deine E-Mail, damit du dich anmelden kannst.</p>
+{{cta:E-Mail bestätigen|{{confirmation_link}}}}
+<p style="font-size:13px;color:#94a3b8;margin:24px 0 0">Oder kopiere diesen Link: {{confirmation_link}}</p>`,
+  },
+  completion: {
+    subject: "Bitte schließe deine Registrierung ab – {{tenant_name}}",
+    body: `<h1 style="font-size:22px;margin:0 0 16px;color:#0f172a">Bitte schließe deine Registrierung ab</h1>
+<p style="font-size:15px;line-height:1.6;color:#475569;margin:0 0 16px">Hallo {{first_name}},</p>
+<p style="font-size:15px;line-height:1.6;color:#475569;margin:0 0 24px">in deinem Account bei <strong>{{tenant_name}}</strong> fehlen noch ein paar Angaben (z.B. Personalausweis, Arbeitsvertrag oder Pflichtdaten). Bitte melde dich an und vervollständige dein Profil.</p>
+{{cta:Jetzt vervollständigen|{{login_link}}}}
+<p style="font-size:13px;color:#94a3b8;margin:24px 0 0">Login: {{login_link}}</p>`,
+  },
+  no_booking: {
+    subject: "Neue Aufträge warten auf dich – {{tenant_name}}",
+    body: `<h1 style="font-size:22px;margin:0 0 16px;color:#0f172a">Neue Aufträge warten auf dich</h1>
+<p style="font-size:15px;line-height:1.6;color:#475569;margin:0 0 16px">Hallo {{first_name}},</p>
+<p style="font-size:15px;line-height:1.6;color:#475569;margin:0 0 24px">du hast seit über 7 Tagen keine Aufträge mehr bei <strong>{{tenant_name}}</strong> gebucht. Im Portal warten freie Termine — sichere dir jetzt deinen nächsten Einsatz.</p>
+{{cta:Aufträge ansehen|{{booking_link}}}}
+<p style="font-size:13px;color:#94a3b8;margin:24px 0 0">Oder kopiere diesen Link: {{booking_link}}</p>`,
+  },
+};
+
+type Vars = Record<string, string>;
+
+function baseVars(t: TenantRow, extra: Vars): Vars {
+  return {
+    tenant_name: t.name,
+    company_name: t.name,
+    sender_name: t.sender_name ?? t.name,
+    support_email: t.reply_to_email ?? t.sender_email ?? "",
+    first_name: "",
+    email: "",
+    portal_link: "",
+    login_link: "",
+    confirmation_link: "",
+    booking_link: "",
+    ...extra,
+  };
 }
 
-function renderConfirmHtml(t: TenantRow, email: string, link: string): string {
-  const brand = t.primary_color ?? "#0f172a";
-  return shellHtml(t, `
-<h1 style="font-size:22px;margin:0 0 16px;color:#0f172a">Bitte bestätige deine E-Mail-Adresse</h1>
-<p style="font-size:15px;line-height:1.6;color:#475569;margin:0 0 24px">Wir haben deine Bestätigung für <strong>${escapeHtml(email)}</strong> noch nicht erhalten. Bitte bestätige deine E-Mail, damit du dich anmelden kannst.</p>
-${btn(brand, link, "E-Mail bestätigen")}
-<p style="font-size:13px;color:#94a3b8;margin:24px 0 0">Oder kopiere diesen Link: <a href="${link}" style="color:${brand};word-break:break-all">${link}</a></p>`);
+function replaceVars(input: string, vars: Vars): string {
+  // Bis zu 3 Durchläufe, damit verschachtelte Platzhalter (z.B. in CTA-Tag) ersetzt werden.
+  let out = input;
+  for (let i = 0; i < 3; i++) {
+    out = out.replace(/\{\{\s*([a-z_]+)\s*\}\}/gi, (m, key) =>
+      Object.prototype.hasOwnProperty.call(vars, key) ? String(vars[key] ?? "") : m,
+    );
+  }
+  return out;
 }
 
-function renderCompletionHtml(t: TenantRow, firstName: string, link: string): string {
-  const brand = t.primary_color ?? "#0f172a";
-  const greet = firstName ? `Hallo ${escapeHtml(firstName)},` : "Hallo,";
-  return shellHtml(t, `
-<h1 style="font-size:22px;margin:0 0 16px;color:#0f172a">Bitte schließe deine Registrierung ab</h1>
-<p style="font-size:15px;line-height:1.6;color:#475569;margin:0 0 16px">${greet}</p>
-<p style="font-size:15px;line-height:1.6;color:#475569;margin:0 0 24px">in deinem Account bei <strong>${escapeHtml(t.name)}</strong> fehlen noch ein paar Angaben (z.B. Personalausweis, Arbeitsvertrag oder Pflichtdaten). Bitte melde dich an und vervollständige dein Profil.</p>
-${btn(brand, link, "Jetzt vervollständigen")}
-<p style="font-size:13px;color:#94a3b8;margin:24px 0 0">Login: <a href="${link}" style="color:${brand}">${link}</a></p>`);
+function renderSubject(custom: string | null | undefined, fallback: string, vars: Vars): string {
+  const tpl = (custom && custom.trim()) ? custom : fallback;
+  return replaceVars(tpl, vars);
 }
 
-function renderNoBookingHtml(t: TenantRow, firstName: string, link: string): string {
-  const brand = t.primary_color ?? "#0f172a";
-  const greet = firstName ? `Hallo ${escapeHtml(firstName)},` : "Hallo,";
-  return shellHtml(t, `
-<h1 style="font-size:22px;margin:0 0 16px;color:#0f172a">Neue Aufträge warten auf dich</h1>
-<p style="font-size:15px;line-height:1.6;color:#475569;margin:0 0 16px">${greet}</p>
-<p style="font-size:15px;line-height:1.6;color:#475569;margin:0 0 24px">du hast seit über 7 Tagen keine Aufträge mehr bei <strong>${escapeHtml(t.name)}</strong> gebucht. Im Portal warten freie Termine — sichere dir jetzt deinen nächsten Einsatz.</p>
-${btn(brand, link, "Aufträge ansehen")}
-<p style="font-size:13px;color:#94a3b8;margin:24px 0 0">Oder kopiere diesen Link: <a href="${link}" style="color:${brand};word-break:break-all">${link}</a></p>`);
+function renderBodyHtml(
+  tenant: TenantRow,
+  custom: string | null | undefined,
+  fallback: string,
+  vars: Vars,
+): string {
+  let body = (custom && custom.trim()) ? custom : fallback;
+
+  // Wenn der Admin Plain-Text schreibt (kein <html tag), \n -> <br>
+  const looksLikeHtml = /<\/?(p|h1|h2|h3|div|br|table|a)\b/i.test(body);
+  if (!looksLikeHtml) {
+    body = escapeHtml(body).replace(/\n/g, "<br>");
+  }
+
+  body = replaceVars(body, vars);
+
+  // CTA-Syntax: {{cta:Label|https://...}}  ->  schöner Button
+  body = body.replace(/\{\{cta:([^|}]+)\|([^}]+)\}\}/g, (_m, label, href) =>
+    btn(tenant.primary_color ?? "#0f172a", String(href).trim(), String(label).trim()),
+  );
+
+  return shellHtml(tenant, body);
 }
 
 function escapeHtml(s: string) {
