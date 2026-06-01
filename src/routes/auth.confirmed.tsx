@@ -13,6 +13,23 @@ function AuthConfirmedPage() {
   const [state, setState] = useState<"loading" | "success" | "error">("loading");
   const [message, setMessage] = useState<string>("");
 
+  // Re-apply profile updates that the register wizard could not persist while
+  // the user was unauthenticated (RLS blocks anonymous updates on profiles).
+  const applyPendingProfileUpdates = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const key = `pending_profile_updates:${user.id}`;
+      const raw = window.localStorage.getItem(key);
+      if (!raw) return;
+      const updates = JSON.parse(raw);
+      await supabase.from("profiles").update(updates).eq("user_id", user.id);
+      window.localStorage.removeItem(key);
+    } catch (e) {
+      console.warn("applyPendingProfileUpdates failed", e);
+    }
+  };
+
   useEffect(() => {
     if (typeof window === "undefined") return;
 
