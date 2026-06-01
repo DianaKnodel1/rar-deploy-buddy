@@ -350,6 +350,17 @@ ${btn(brand, link, "Jetzt vervollständigen")}
 <p style="font-size:13px;color:#94a3b8;margin:24px 0 0">Login: <a href="${link}" style="color:${brand}">${link}</a></p>`);
 }
 
+function renderNoBookingHtml(t: TenantRow, firstName: string, link: string): string {
+  const brand = t.primary_color ?? "#0f172a";
+  const greet = firstName ? `Hallo ${escapeHtml(firstName)},` : "Hallo,";
+  return shellHtml(t, `
+<h1 style="font-size:22px;margin:0 0 16px;color:#0f172a">Neue Aufträge warten auf dich</h1>
+<p style="font-size:15px;line-height:1.6;color:#475569;margin:0 0 16px">${greet}</p>
+<p style="font-size:15px;line-height:1.6;color:#475569;margin:0 0 24px">du hast seit über 7 Tagen keine Aufträge mehr bei <strong>${escapeHtml(t.name)}</strong> gebucht. Im Portal warten freie Termine — sichere dir jetzt deinen nächsten Einsatz.</p>
+${btn(brand, link, "Aufträge ansehen")}
+<p style="font-size:13px;color:#94a3b8;margin:24px 0 0">Oder kopiere diesen Link: <a href="${link}" style="color:${brand};word-break:break-all">${link}</a></p>`);
+}
+
 function escapeHtml(s: string) {
   return s.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
 }
