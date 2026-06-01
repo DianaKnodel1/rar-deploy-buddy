@@ -60,6 +60,14 @@ interface TenantRow {
   smtp_port: number | null;
   smtp_username: string | null;
   smtp_password: string | null;
+  reminder_invite_subject: string | null;
+  reminder_invite_body: string | null;
+  reminder_confirm_subject: string | null;
+  reminder_confirm_body: string | null;
+  reminder_completion_subject: string | null;
+  reminder_completion_body: string | null;
+  reminder_no_booking_subject: string | null;
+  reminder_no_booking_body: string | null;
 }
 
 type ReminderType = "invite" | "confirm_email" | "complete_registration" | "no_recent_booking";
