@@ -87,17 +87,15 @@ export function SignatureGenerator({ tenantId, currentUrl, onSaved }: Props) {
         upsert: true,
       });
       if (upErr) throw upErr;
-      const { data: urlData } = supabase.storage.from("signatures").getPublicUrl(path);
-      const publicUrl = urlData.publicUrl;
-
       const { error: dbErr } = await supabase
         .from("tenants")
-        .update({ company_signature_url: publicUrl } as any)
+        .update({ company_signature_url: path } as any)
         .eq("id", tenantId);
       if (dbErr) throw dbErr;
 
       toast({ title: "Unterschrift gespeichert" });
-      onSaved?.(publicUrl);
+      const { data: signed } = await supabase.storage.from("signatures").createSignedUrl(path, 60 * 10);
+      onSaved?.(signed?.signedUrl ?? path);
     } catch (err: any) {
       toast({ title: "Fehler", description: err.message, variant: "destructive" });
     } finally {
