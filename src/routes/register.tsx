@@ -286,7 +286,19 @@ function RegisterPage() {
       });
 
       if (fnErr || (fnData as any)?.error) {
-        const msg = (fnData as any)?.error ?? fnErr?.message ?? "Unbekannter Fehler";
+        // Bei non-2xx liefert supabase.functions.invoke nur eine generische
+        // Fehlermeldung ("Edge Function returned a non-2xx status code") und
+        // packt den eigentlichen Body in fnErr.context.response. Den lesen
+        // wir aus, damit der User die echte Ursache (z.B. "bereits registriert")
+        // sieht.
+        let msg: string = (fnData as any)?.error ?? fnErr?.message ?? "Unbekannter Fehler";
+        try {
+          const resp = (fnErr as any)?.context?.response as Response | undefined;
+          if (resp && typeof resp.clone === "function") {
+            const body = await resp.clone().json().catch(() => null);
+            if (body?.error) msg = body.error;
+          }
+        } catch {}
         toast({ title: "Registrierung fehlgeschlagen", description: translateAuthError(msg), variant: "destructive" });
         return;
       }
