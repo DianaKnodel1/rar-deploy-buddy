@@ -27,6 +27,7 @@ const corsHeaders = {
 
 const MAX_ATTEMPTS = 5;
 const MIN_DAYS_BETWEEN = 3;
+const NO_BOOKING_DAYS = 7;
 
 interface TenantRow {
   id: string;
@@ -43,7 +44,7 @@ interface TenantRow {
   smtp_password: string | null;
 }
 
-type ReminderType = "invite" | "confirm_email" | "complete_registration";
+type ReminderType = "invite" | "confirm_email" | "complete_registration" | "no_recent_booking";
 
 interface SendCtx {
   admin: ReturnType<typeof createClient>;
@@ -80,6 +81,7 @@ serve(async (req) => {
     if (!onlyType || onlyType === "invite") await runInvites(ctx);
     if (!onlyType || onlyType === "confirm_email") await runConfirmEmail(ctx);
     if (!onlyType || onlyType === "complete_registration") await runCompleteRegistration(ctx);
+    if (!onlyType || onlyType === "no_recent_booking") await runNoRecentBooking(ctx);
 
     return json({
       success: true,
