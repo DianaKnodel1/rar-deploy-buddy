@@ -148,6 +148,14 @@ async function logReminder(
   });
 }
 
+// Cap-Check: bricht den Loop ab, wenn das per-run-Limit für diesen Typ erreicht ist
+function capReached(ctx: SendCtx, type: ReminderType): boolean {
+  return (ctx.sentCountByType.get(type) ?? 0) >= MAX_SENDS_PER_RUN;
+}
+function bumpSent(ctx: SendCtx, type: ReminderType) {
+  ctx.sentCountByType.set(type, (ctx.sentCountByType.get(type) ?? 0) + 1);
+}
+
 // ───── 1. Invite-Reminder ─────
 async function runInvites(ctx: SendCtx) {
   // Akzeptierte Bewerbungen, älter als 3 Tage
