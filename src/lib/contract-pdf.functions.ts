@@ -3,10 +3,11 @@ import { z } from "zod";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { applyEmploymentStartDate, formatGermanDate } from "@/lib/contract-utils";
 
 function extractSignatureStoragePath(value: string | null): string | null {
   if (!value) return null;
-  if (!/^https?:\/\//i.test(value)) return value;
+  if (!/^https?:\/\//i.test(value)) return value.replace(/^signatures\//, "");
   const match = value.match(/\/storage\/v1\/object\/(?:public|sign)\/signatures\/([^?]+)/);
   return match?.[1] ? decodeURIComponent(match[1]) : null;
 }
@@ -66,6 +67,12 @@ export const generateContractPdf = createServerFn({ method: "POST" })
       .from("tenants")
       .select("name, company_ceo_name, company_signature_url")
       .eq("id", contract.tenant_id!)
+      .maybeSingle();
+
+    const { data: profile } = await supabaseAdmin
+      .from("profiles")
+      .select("employment_start_date")
+      .eq("user_id", contract.user_id)
       .maybeSingle();
 
     // Build PDF
@@ -133,7 +140,11 @@ export const generateContractPdf = createServerFn({ method: "POST" })
     };
 
     // Render contract content line by line, treating §-headings as bold.
-    const rawLines = (contract.generated_content || "").split("\n");
+    const renderedContent = applyEmploymentStartDate(
+      contract.generated_content || "",
+      formatGermanDate(profile?.employment_start_date)
+    );
+    const rawLines = renderedContent.split("\n");
     for (const rawLine of rawLines) {
       const line = rawLine.trimEnd();
       if (line === "") {

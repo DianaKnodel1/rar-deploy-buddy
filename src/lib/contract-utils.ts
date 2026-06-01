@@ -18,15 +18,32 @@ interface ContractData {
 
 export function formatGermanDate(d: Date | string | null | undefined): string {
   if (!d) return "";
+  if (typeof d === "string") {
+    const iso = d.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (iso) return `${iso[3]}.${iso[2]}.${iso[1]}`;
+    const german = d.match(/^(\d{1,2})\.(\d{1,2})\.(\d{2}|\d{4})$/);
+    if (german) {
+      const year = german[3].length === 2 ? `20${german[3]}` : german[3];
+      return `${german[1].padStart(2, "0")}.${german[2].padStart(2, "0")}.${year}`;
+    }
+  }
   const date = typeof d === "string" ? new Date(d) : d;
   if (isNaN(date.getTime())) return "";
   return date.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
+export function applyEmploymentStartDate(content: string, startDate?: string): string {
+  if (!content || !startDate) return content;
+  return content.replace(
+    /(Arbeitsverhältnis\s+beginnt\s+(?:am|zum)\s+)\d{1,2}\.\d{1,2}\.\d{2,4}/gi,
+    `$1${startDate}`
+  );
+}
+
 export function replacePlaceholders(template: string, data: ContractData): string {
   const today = new Date().toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" });
   const startDate = data.startDate || today;
-  return template
+  const resolved = template
     .replace(/\{\{first_name\}\}/g, data.firstName)
     .replace(/\{\{last_name\}\}/g, data.lastName)
     .replace(/\{\{address\}\}/g, data.address)
@@ -38,6 +55,7 @@ export function replacePlaceholders(template: string, data: ContractData): strin
     .replace(/\{\{start_date\}\}/g, startDate)
     .replace(/\{\{employment_start_date\}\}/g, startDate)
     .replace(/\{\{date\}\}/g, today);
+  return applyEmploymentStartDate(resolved, data.startDate);
 }
 
 export function generateFallbackContract(data: ContractData): string {

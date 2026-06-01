@@ -23,6 +23,7 @@ import { CalendarDays } from "lucide-react";
 import { format, addDays, startOfDay, isBefore } from "date-fns";
 import { de } from "date-fns/locale";
 import { cn } from "@/lib/utils";
+import { applyEmploymentStartDate, formatGermanDate } from "@/lib/contract-utils";
 
 const EMPLOYMENT_LABELS: Record<string, string> = {
   minijob: "Minijob", teilzeit: "Teilzeit", vollzeit: "Vollzeit",
@@ -35,6 +36,13 @@ const dateOnlyToLocalDate = (value: string) => {
   const [year, month, day] = value.split("-").map(Number);
   return new Date(year, (month ?? 1) - 1, day ?? 1);
 };
+
+function extractStoragePath(value: string | null): string | null {
+  if (!value) return null;
+  if (!/^https?:\/\//i.test(value)) return value.replace(/^signatures\//, "");
+  const match = value.match(/\/storage\/v1\/object\/(?:public|sign)\/signatures\/([^?]+)/);
+  return match?.[1] ? decodeURIComponent(match[1]) : null;
+}
 
 function StartDateStep({ userId, onSaved, onBack }: { userId: string; onSaved: (d: string) => void; onBack: () => void }) {
   const { toast } = useToast();
@@ -153,17 +161,34 @@ function ContractPage() {
   useEffect(() => {
     if (!contract?.id) return;
     let cancelled = false;
+    setEmpSigError(false);
+    setCompSigError(false);
+    setEmployeeSigUrl(null);
+    setCompanySigUrl(null);
     getSigUrlsFn({ data: { contractId: contract.id } })
       .then((res) => {
         if (cancelled) return;
-        setEmployeeSigUrl(res.employeeUrl);
-        setCompanySigUrl(res.companyUrl);
+        setEmployeeSigUrl(res.employeeUrl ?? null);
+        setCompanySigUrl(res.companyUrl ?? null);
       })
       .catch(() => {
-        /* still zeigt einfach nichts an */
+        if (cancelled) return;
+        setEmployeeSigUrl(null);
+        setCompanySigUrl(null);
       });
     return () => { cancelled = true; };
   }, [contract?.id]);
+
+  useEffect(() => {
+    if (!contract?.signature_image_url || employeeSigUrl) return;
+    const path = extractStoragePath(contract.signature_image_url);
+    if (!path) return;
+    let cancelled = false;
+    supabase.storage.from("signatures").createSignedUrl(path, 3600).then(({ data }) => {
+      if (!cancelled) setEmployeeSigUrl(data?.signedUrl ?? null);
+    });
+    return () => { cancelled = true; };
+  }, [contract?.signature_image_url, employeeSigUrl]);
 
   const handleSignContract = async (contentOverride?: string, sigOverride?: string | null) => {
     if (!user || !profile) return;
@@ -211,7 +236,7 @@ function ContractPage() {
           user_id: user.id,
           tenant_id: profile.tenant_id,
           employment_type: profile.employment_type as any,
-          generated_content: contentOverride ?? "",
+          generated_content: applyEmploymentStartDate(contentOverride ?? "", formatGermanDate(profile.employment_start_date)),
           signed_name: signatureName.trim(),
           signature_image_url: signaturePath,
           signed_at: now,
@@ -293,11 +318,10 @@ function ContractPage() {
             </div>
 
             <div className="rounded-xl border border-border bg-muted/30 p-5 max-h-96 overflow-y-auto text-xs text-foreground/80 leading-relaxed whitespace-pre-wrap font-mono">
-              {contract.generated_content}
+              {applyEmploymentStartDate(contract.generated_content, formatGermanDate(profile?.employment_start_date))}
             </div>
 
-            {(employeeSigUrl || companySigUrl) && (
-              <div className="grid grid-cols-2 gap-4 mt-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
                 <div>
                   <p className="text-xs text-muted-foreground mb-2">Deine Unterschrift</p>
                   {employeeSigUrl && !empSigError ? (
@@ -308,8 +332,8 @@ function ContractPage() {
                       onError={() => setEmpSigError(true)}
                     />
                   ) : (
-                    <div className="h-16 border rounded-lg bg-card flex items-center justify-center px-3">
-                      <span className="font-serif italic text-base text-foreground truncate">{contract.signed_name}</span>
+                    <div className="h-16 border rounded-lg bg-card flex items-center justify-center px-3 text-center">
+                      <span className="font-serif italic text-base text-foreground truncate">{contract.signed_name || "Digital unterschrieben"}</span>
                     </div>
                   )}
                   <p className="text-[10px] text-muted-foreground mt-1">{contract.signed_name}</p>
@@ -330,7 +354,6 @@ function ContractPage() {
                   )}
                 </div>
               </div>
-            )}
 
             <Button className="w-full gap-2" onClick={handleDownloadPdf} disabled={downloading}>
               {downloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}

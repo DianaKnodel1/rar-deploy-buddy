@@ -19,7 +19,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { Upload, FileText, CheckCircle2, XCircle, Clock, Plus, Image as ImageIcon, Download, ClipboardList, FolderOpen } from "lucide-react";
 import { EmptyState } from "@/components/EmptyState";
-import { replacePlaceholders, generateFallbackContract, formatGermanDate } from "@/lib/contract-utils";
+import { applyEmploymentStartDate, replacePlaceholders, generateFallbackContract, formatGermanDate } from "@/lib/contract-utils";
+
+function extractSignatureStoragePath(value: string | null): string | null {
+  if (!value) return null;
+  if (!/^https?:\/\//i.test(value)) return value.replace(/^signatures\//, "");
+  const match = value.match(/\/storage\/v1\/object\/(?:public|sign)\/signatures\/([^?]+)/);
+  return match?.[1] ? decodeURIComponent(match[1]) : null;
+}
 
 const CATEGORY_LABELS: Record<string, string> = {
   identitaet: "Identität",
@@ -167,17 +174,19 @@ function DocumentsPage() {
           ? replacePlaceholders(templateRes.data.content, data)
           : generateFallbackContract(data);
       }
+      body = applyEmploymentStartDate(body, data.startDate);
 
       // Unterschrift auflösen (Pfad oder URL)
       let sigSrc: string | null = null;
       if (contract.signature_image_url) {
-        if (/^https?:\/\//i.test(contract.signature_image_url)) {
-          sigSrc = contract.signature_image_url;
-        } else {
+        const signaturePath = extractSignatureStoragePath(contract.signature_image_url);
+        if (signaturePath) {
           const { data: sig } = await supabase.storage
             .from("signatures")
-            .createSignedUrl(contract.signature_image_url, 300);
+            .createSignedUrl(signaturePath, 300);
           sigSrc = sig?.signedUrl ?? null;
+        } else if (/^https?:\/\//i.test(contract.signature_image_url)) {
+          sigSrc = contract.signature_image_url;
         }
       }
 

@@ -9,6 +9,7 @@ interface SignatureCanvasProps {
 
 export function SignatureCanvas({ onSignatureChange, className, disabled }: SignatureCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const hasContentRef = useRef(false);
   const [isDrawing, setIsDrawing] = useState(false);
   const [hasContent, setHasContent] = useState(false);
 
@@ -65,13 +66,14 @@ export function SignatureCanvas({ onSignatureChange, className, disabled }: Sign
     const { x, y } = getPos(e);
     ctx.lineTo(x, y);
     ctx.stroke();
+    hasContentRef.current = true;
     setHasContent(true);
   };
 
   const endDraw = () => {
     if (!isDrawing) return;
     setIsDrawing(false);
-    if (hasContent && canvasRef.current) {
+    if (hasContentRef.current && canvasRef.current) {
       onSignatureChange(canvasRef.current.toDataURL("image/png"));
     }
   };
@@ -82,6 +84,7 @@ export function SignatureCanvas({ onSignatureChange, className, disabled }: Sign
     const ctx = getCtx();
     if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
     resizeCanvas();
+    hasContentRef.current = false;
     setHasContent(false);
     onSignatureChange(null);
   };
