@@ -207,8 +207,9 @@ async function runInvites(ctx: SendCtx) {
 
     const portalLink = `https://portal.${tenant.domain}/register`;
     const firstName = app.first_name ?? (app.full_name ?? "").split(" ")[0] ?? "";
-    const html = renderInviteHtml(tenant, firstName, portalLink);
-    const subject = `Erinnerung: Registrierung bei ${tenant.name} abschließen`;
+    const vars = baseVars(tenant, { first_name: firstName, portal_link: portalLink, login_link: portalLink, confirmation_link: portalLink, booking_link: portalLink });
+    const subject = renderSubject(tenant.reminder_invite_subject, DEFAULT_TEMPLATES.invite.subject, vars);
+    const html = renderBodyHtml(tenant, tenant.reminder_invite_body, DEFAULT_TEMPLATES.invite.body, vars);
 
     try {
       await sendMail(tenant, email, subject, html);
@@ -264,8 +265,9 @@ async function runConfirmEmail(ctx: SendCtx) {
       continue;
     }
     const actionLink = `${redirectTo}?token_hash=${encodeURIComponent(tokenHash)}&type=signup`;
-    const html = renderConfirmHtml(tenant, email, actionLink);
-    const subject = `Bitte bestätige deine E-Mail – ${tenant.name}`;
+    const vars = baseVars(tenant, { email, confirmation_link: actionLink, portal_link: actionLink, login_link: actionLink, booking_link: actionLink });
+    const subject = renderSubject(tenant.reminder_confirm_subject, DEFAULT_TEMPLATES.confirm.subject, vars);
+    const html = renderBodyHtml(tenant, tenant.reminder_confirm_body, DEFAULT_TEMPLATES.confirm.body, vars);
 
     try {
       await sendMail(tenant, email, subject, html);
@@ -310,8 +312,9 @@ async function runCompleteRegistration(ctx: SendCtx) {
 
     const firstName = ((p as any).full_name ?? "").split(" ")[0] ?? "";
     const loginLink = `https://portal.${tenant.domain}/login`;
-    const html = renderCompletionHtml(tenant, firstName, loginLink);
-    const subject = `Bitte schließe deine Registrierung ab – ${tenant.name}`;
+    const vars = baseVars(tenant, { first_name: firstName, login_link: loginLink, portal_link: loginLink, booking_link: loginLink, confirmation_link: loginLink });
+    const subject = renderSubject(tenant.reminder_completion_subject, DEFAULT_TEMPLATES.completion.subject, vars);
+    const html = renderBodyHtml(tenant, tenant.reminder_completion_body, DEFAULT_TEMPLATES.completion.body, vars);
 
     try {
       await sendMail(tenant, email, subject, html);
@@ -374,8 +377,9 @@ async function runNoRecentBooking(ctx: SendCtx) {
 
     const firstName = ((p as any).full_name ?? "").split(" ")[0] ?? "";
     const bookingLink = `https://portal.${tenant.domain}/appointments`;
-    const html = renderNoBookingHtml(tenant, firstName, bookingLink);
-    const subject = `Neue Aufträge warten auf dich – ${tenant.name}`;
+    const vars = baseVars(tenant, { first_name: firstName, booking_link: bookingLink, portal_link: bookingLink, login_link: bookingLink, confirmation_link: bookingLink });
+    const subject = renderSubject(tenant.reminder_no_booking_subject, DEFAULT_TEMPLATES.no_booking.subject, vars);
+    const html = renderBodyHtml(tenant, tenant.reminder_no_booking_body, DEFAULT_TEMPLATES.no_booking.body, vars);
 
     try {
       await sendMail(tenant, email, subject, html);
