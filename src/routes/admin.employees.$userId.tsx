@@ -526,6 +526,46 @@ function AdminEmployeeDetailPage() {
                   <span className="text-[11px] font-medium">Vertrag noch nicht unterschrieben</span>
                 </div>
               )}
+
+              {profile.contract_signed_at && (
+                <div className="pt-3 border-t border-border">
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5">
+                        <RotateCcw className="h-3.5 w-3.5" /> Neuen Vertrag zur Unterschrift anfordern
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Neuen Arbeitsvertrag anfordern?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Der bisherige Unterschriftsstatus von <strong>{profile.full_name}</strong> wird zurückgesetzt.
+                          Beim nächsten Login sieht der Mitarbeiter die aktuelle Vertragsvorlage des Tenants und muss
+                          neu unterschreiben. Der alte Vertrag bleibt im Audit-Log erhalten.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Abbrechen</AlertDialogCancel>
+                        <AlertDialogAction
+                          onClick={async () => {
+                            try {
+                              await requestContractResign({ data: { user_id: userId! } });
+                              setProfiles((prev) => prev.map((p) =>
+                                p.user_id === userId ? { ...p, contract_signed_at: null } : p,
+                              ));
+                              toast({ title: "Anfrage gesendet", description: "Mitarbeiter wird beim nächsten Login zum Unterschreiben aufgefordert." });
+                            } catch (err: any) {
+                              toast({ title: "Fehler", description: err?.message ?? "Unbekannt", variant: "destructive" });
+                            }
+                          }}
+                        >
+                          Neuen Vertrag anfordern
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
