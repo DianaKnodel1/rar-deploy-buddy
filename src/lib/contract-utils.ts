@@ -12,6 +12,7 @@ interface ContractData {
   employmentType: string;
   companyName: string;
   companyCeoName: string;
+  companyAddress?: string;
   startDate?: string; // already formatted DE
 }
 
@@ -33,6 +34,7 @@ export function replacePlaceholders(template: string, data: ContractData): strin
     .replace(/\{\{employment_type\}\}/g, EMPLOYMENT_LABELS[data.employmentType] ?? data.employmentType)
     .replace(/\{\{company_name\}\}/g, data.companyName)
     .replace(/\{\{company_ceo_name\}\}/g, data.companyCeoName)
+    .replace(/\{\{company_address\}\}/g, data.companyAddress ?? "")
     .replace(/\{\{start_date\}\}/g, startDate)
     .replace(/\{\{employment_start_date\}\}/g, startDate)
     .replace(/\{\{date\}\}/g, today);
