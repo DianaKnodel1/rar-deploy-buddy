@@ -5,6 +5,8 @@
 
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
+import { createServer } from "node:http";
+import { Readable } from "node:stream";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const handlerPath = resolve(here, "..", "dist", "server", "server.js");
@@ -20,27 +22,39 @@ if (typeof handler?.fetch !== "function") {
 const port = Number(process.env.PORT ?? 3000);
 const hostname = process.env.HOST ?? "127.0.0.1";
 
-// @ts-ignore — Bun ist im Bun-Runtime global verfügbar.
-const server = Bun.serve({
-  port,
-  hostname,
-  // Generous timeout für SSR-Loader.
-  idleTimeout: 120,
-  fetch: (request) => handler.fetch(request, process.env, {}),
-  error: (err) => {
-    console.error("[serve] Unhandled fetch error:", err);
-    return new Response("Internal Server Error", { status: 500 });
-  },
+const server = createServer(async (req, res) => {
+  try {
+    const url = new URL(req.url ?? "/", `http://${req.headers.host ?? `${hostname}:${port}`}`);
+    const init = {
+      method: req.method,
+      headers: req.headers,
+      body: req.method === "GET" || req.method === "HEAD" ? undefined : req,
+      duplex: "half",
+    };
+    const response = await handler.fetch(new Request(url, init), process.env, {});
+
+    res.writeHead(response.status, Object.fromEntries(response.headers));
+    if (req.method === "HEAD" || !response.body) {
+      res.end();
+      return;
+    }
+    Readable.fromWeb(response.body).pipe(res);
+  } catch (err) {
+    console.error("[serve] Unhandled request error:", err);
+    if (!res.headersSent) res.writeHead(500, { "content-type": "text/plain; charset=utf-8" });
+    res.end("Internal Server Error");
+  }
 });
 
-console.log(`[serve] Portal läuft auf http://${server.hostname}:${server.port}`);
+server.listen(port, hostname, () => {
+  console.log(`[serve] Portal läuft auf http://${hostname}:${port}`);
+});
 
 // Sauberer Shutdown bei SIGTERM/SIGINT (wichtig für systemd).
 for (const sig of ["SIGTERM", "SIGINT"]) {
   process.on(sig, () => {
     console.log(`[serve] ${sig} empfangen — beende Server.`);
-    server.stop();
-    process.exit(0);
+    server.close(() => process.exit(0));
   });
 }
 
@@ -50,7 +64,3 @@ process.on("uncaughtException", (err) => {
 process.on("unhandledRejection", (err) => {
   console.error("[serve] unhandledRejection:", err);
 });
-
-// Bun.serve() allein hält den Prozess in dieser Skript-Konfiguration nicht
-// offen — ein nie auflösendes Promise blockiert das Event-Loop zuverlässig.
-await new Promise(() => {});
