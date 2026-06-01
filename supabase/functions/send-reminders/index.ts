@@ -29,6 +29,17 @@ const MAX_ATTEMPTS = 5;
 const MIN_DAYS_BETWEEN = 3;
 const NO_BOOKING_DAYS = 7;
 
+// ─── Anti-Spam Throttling ───
+// Max. echte Sends pro Typ und Ausführung (verhindert Burst-Send)
+const MAX_SENDS_PER_RUN = 15;
+// Wartezeit zwischen zwei echten Sends (Basis + zufällige Streuung)
+const SEND_DELAY_MIN_MS = 2500;
+const SEND_DELAY_MAX_MS = 5500;
+
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+const jitterDelay = () =>
+  sleep(SEND_DELAY_MIN_MS + Math.floor(Math.random() * (SEND_DELAY_MAX_MS - SEND_DELAY_MIN_MS)));
+
 interface TenantRow {
   id: string;
   name: string;
@@ -51,6 +62,7 @@ interface SendCtx {
   tenants: Map<string, TenantRow>;
   dryRun: boolean;
   results: { type: ReminderType; email: string; status: string; error?: string }[];
+  sentCountByType: Map<ReminderType, number>;
 }
 
 serve(async (req) => {
@@ -76,7 +88,7 @@ serve(async (req) => {
     const tenants = new Map<string, TenantRow>();
     (tList ?? []).forEach((t: any) => tenants.set(t.id, t as TenantRow));
 
-    const ctx: SendCtx = { admin, tenants, dryRun, results: [] };
+    const ctx: SendCtx = { admin, tenants, dryRun, results: [], sentCountByType: new Map() };
 
     if (!onlyType || onlyType === "invite") await runInvites(ctx);
     if (!onlyType || onlyType === "confirm_email") await runConfirmEmail(ctx);
