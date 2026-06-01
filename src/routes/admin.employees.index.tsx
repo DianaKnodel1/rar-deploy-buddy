@@ -422,6 +422,35 @@ function AdminEmployeesPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <AlertDialog open={bulkDeleteOpen} onOpenChange={(o) => { if (!o && !bulkDeleting) { setBulkDeleteOpen(false); setBulkConfirm(""); } }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-destructive flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5" /> {selected.size} Mitarbeiter endgültig löschen
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2 text-sm">
+                <p><strong className="text-foreground">{selected.size}</strong> Mitarbeiter werden vollständig entfernt – inklusive Auth-Accounts, Chats, Verträgen, Aufgaben, KYC und Uploads.</p>
+                <p>Dieser Vorgang ist <strong>nicht umkehrbar</strong>.</p>
+                <p>Tippe zur Bestätigung <code className="bg-muted px-1.5 py-0.5 rounded text-foreground">MITARBEITER LÖSCHEN</code> ein:</p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <Input value={bulkConfirm} onChange={(e) => setBulkConfirm(e.target.value)} placeholder="MITARBEITER LÖSCHEN" autoFocus className="font-mono" />
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={bulkDeleting}>Abbrechen</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleBulkDelete}
+              disabled={bulkConfirm !== "MITARBEITER LÖSCHEN" || bulkDeleting}
+              className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
+            >
+              {bulkDeleting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Trash2 className="h-4 w-4 mr-2" />}
+              {selected.size} endgültig löschen
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
