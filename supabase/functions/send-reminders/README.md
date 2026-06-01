@@ -41,6 +41,12 @@ Nur ein Typ:
 -d '{"only_type": "invite"}'
 ```
 
+Verfügbare Typen:
+- `invite` – Bewerber angenommen, kein Account (Tag 3, 6, 9, 12, 15)
+- `confirm_email` – Account angelegt, E-Mail nicht bestätigt
+- `complete_registration` – Account bestätigt, Onboarding unvollständig (Vertrag/Personalausweis/Pflichtdaten fehlend)
+- `no_recent_booking` – Mitarbeiter mit abgeschlossenem Onboarding ohne Buchung seit 7+ Tagen
+
 ## pg_cron einrichten (1x/Tag um 09:00 Europe/Berlin = 07:00 UTC)
 
 In der Postgres-DB ausführen (einmalig):
