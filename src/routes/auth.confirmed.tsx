@@ -39,6 +39,7 @@ function AuthConfirmedPage() {
           setMessage(error.message);
           return;
         }
+        await applyPendingProfileUpdates();
         setState("success");
         window.history.replaceState(null, "", "/auth/confirmed");
         return;
@@ -47,6 +48,7 @@ function AuthConfirmedPage() {
       // 2. Alter Flow (Tokens kommen via Hash von GoTrue verify)
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {
+        await applyPendingProfileUpdates();
         setState("success");
         window.history.replaceState(null, "", "/auth/confirmed");
         return;
@@ -60,6 +62,7 @@ function AuthConfirmedPage() {
           setMessage(error.message);
           return;
         }
+        await applyPendingProfileUpdates();
         setState("success");
         window.history.replaceState(null, "", "/auth/confirmed");
         return;
