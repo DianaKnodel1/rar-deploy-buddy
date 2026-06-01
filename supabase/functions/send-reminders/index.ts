@@ -279,6 +279,67 @@ async function runCompleteRegistration(ctx: SendCtx) {
   }
 }
 
+// ───── 4. No-Recent-Booking-Reminder ─────
+async function runNoRecentBooking(ctx: SendCtx) {
+  const { data: profiles, error } = await ctx.admin
+    .from("profiles")
+    .select("user_id,full_name,tenant_id,onboarding_status,created_at")
+    .eq("onboarding_status", "abgeschlossen");
+  if (error) { console.error("no_booking query", error); return; }
+  if (!profiles || profiles.length === 0) return;
+
+  const userIds = profiles.map((p: any) => p.user_id);
+  const cutoffIso = new Date(Date.now() - NO_BOOKING_DAYS * 86400_000).toISOString();
+
+  const { data: recentBookings } = await ctx.admin
+    .from("bookings")
+    .select("user_id,created_at,status")
+    .in("user_id", userIds)
+    .gte("created_at", cutoffIso)
+    .neq("status", "cancelled");
+  const hasRecent = new Set<string>((recentBookings ?? []).map((b: any) => b.user_id));
+
+  const { data: usersList } = await ctx.admin.auth.admin.listUsers({ page: 1, perPage: 5000 });
+  const userMap = new Map<string, any>((usersList?.users ?? []).map(u => [u.id, u]));
+
+  for (const p of profiles) {
+    const uid = (p as any).user_id;
+    if (hasRecent.has(uid)) continue;
+
+    const u = userMap.get(uid);
+    if (!u || !u.email || !u.email_confirmed_at) continue;
+
+    const accountAgeMs = Date.now() - new Date(u.created_at!).getTime();
+    if (accountAgeMs < NO_BOOKING_DAYS * 86400_000) continue;
+
+    const email = u.email.toLowerCase();
+    const tenant = (p as any).tenant_id ? ctx.tenants.get((p as any).tenant_id) : null;
+    if (!tenant || !tenant.smtp_host) {
+      ctx.results.push({ type: "no_recent_booking", email, status: "skipped", error: "no_tenant_smtp" });
+      continue;
+    }
+
+    const gate = await canSend(ctx.admin, email, "no_recent_booking");
+    if (!gate.ok) { ctx.results.push({ type: "no_recent_booking", email, status: "skipped", error: gate.reason }); continue; }
+
+    if (ctx.dryRun) { ctx.results.push({ type: "no_recent_booking", email, status: "sent" }); continue; }
+
+    const firstName = ((p as any).full_name ?? "").split(" ")[0] ?? "";
+    const bookingLink = `https://portal.${tenant.domain}/appointments`;
+    const html = renderNoBookingHtml(tenant, firstName, bookingLink);
+    const subject = `Neue Aufträge warten auf dich – ${tenant.name}`;
+
+    try {
+      await sendMail(tenant, email, subject, html);
+      await logReminder(ctx.admin, email, tenant.id, "no_recent_booking", gate.nextAttempt, "sent");
+      ctx.results.push({ type: "no_recent_booking", email, status: "sent" });
+    } catch (e: any) {
+      await logReminder(ctx.admin, email, tenant.id, "no_recent_booking", gate.nextAttempt, "failed", String(e?.message ?? e));
+      ctx.results.push({ type: "no_recent_booking", email, status: "failed", error: String(e?.message ?? e) });
+    }
+  }
+}
+
 // ───── Mailversand ─────
 async function sendMail(tenant: TenantRow, to: string, subject: string, html: string) {
   const transporter = nodemailer.createTransport({
