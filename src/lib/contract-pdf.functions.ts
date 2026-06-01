@@ -6,7 +6,7 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 
 function extractSignatureStoragePath(value: string | null): string | null {
   if (!value) return null;
-  if (!/^https?:\/\//i.test(value)) return value;
+  if (!/^https?:\/\//i.test(value)) return value.replace(/^signatures\//, "");
   const match = value.match(/\/storage\/v1\/object\/(?:public|sign)\/signatures\/([^?]+)/);
   return match?.[1] ? decodeURIComponent(match[1]) : null;
 }
