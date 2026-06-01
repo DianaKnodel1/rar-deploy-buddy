@@ -18,6 +18,26 @@ import { useToast } from "@/hooks/use-toast";
 import { PageHeaderSkeleton } from "@/components/SkeletonLoaders";
 import { Mail, Save, Send, Eye, AlertTriangle, CheckCircle2, Copy, Loader2 } from "lucide-react";
 
+// Defaults für Reminder-Templates (gespiegelt zur Edge Function).
+const REMINDER_DEFAULTS = {
+  invite: {
+    subject: "Erinnerung: Registrierung bei {{tenant_name}} abschließen",
+    body: `Hallo {{first_name}},\n\ndeine Bewerbung bei {{tenant_name}} wurde bereits angenommen, aber du hast deinen Account noch nicht angelegt. Bitte schließe die Registrierung ab, damit es weitergehen kann.\n\n{{cta:Jetzt registrieren|{{portal_link}}}}\n\nOder kopiere diesen Link: {{portal_link}}`,
+  },
+  confirm: {
+    subject: "Bitte bestätige deine E-Mail – {{tenant_name}}",
+    body: `Wir haben deine Bestätigung für {{email}} noch nicht erhalten. Bitte bestätige deine E-Mail, damit du dich anmelden kannst.\n\n{{cta:E-Mail bestätigen|{{confirmation_link}}}}\n\nOder kopiere diesen Link: {{confirmation_link}}`,
+  },
+  completion: {
+    subject: "Bitte schließe deine Registrierung ab – {{tenant_name}}",
+    body: `Hallo {{first_name}},\n\nin deinem Account bei {{tenant_name}} fehlen noch ein paar Angaben (z.B. Personalausweis, Arbeitsvertrag oder Pflichtdaten). Bitte melde dich an und vervollständige dein Profil.\n\n{{cta:Jetzt vervollständigen|{{login_link}}}}\n\nLogin: {{login_link}}`,
+  },
+  no_booking: {
+    subject: "Neue Aufträge warten auf dich – {{tenant_name}}",
+    body: `Hallo {{first_name}},\n\ndu hast seit über 7 Tagen keine Aufträge mehr bei {{tenant_name}} gebucht. Im Portal warten freie Termine — sichere dir jetzt deinen nächsten Einsatz.\n\n{{cta:Aufträge ansehen|{{booking_link}}}}\n\nOder kopiere diesen Link: {{booking_link}}`,
+  },
+};
+
 interface TenantEmail {
   id: string;
   name: string;
