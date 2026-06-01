@@ -15,6 +15,8 @@ import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, CheckCircle2, Loader2, Download, Briefcase } from "lucide-react";
 import StepContract from "@/components/register/StepContract";
 import { translateDbError } from "@/lib/db-errors";
+import { useServerFn } from "@tanstack/react-start";
+import { generateContractPdf, getContractSignatureUrls } from "@/lib/contract-pdf.functions";
 
 const EMPLOYMENT_LABELS: Record<string, string> = {
   minijob: "Minijob", teilzeit: "Teilzeit", vollzeit: "Vollzeit",
@@ -44,6 +46,12 @@ function ContractPage() {
   const [agreed, setAgreed] = useState(false);
   const [signatureName, setSignatureName] = useState("");
 
+  const [employeeSigUrl, setEmployeeSigUrl] = useState<string | null>(null);
+  const [companySigUrl, setCompanySigUrl] = useState<string | null>(null);
+
+  const generatePdfFn = useServerFn(generateContractPdf);
+  const getSigUrlsFn = useServerFn(getContractSignatureUrls);
+
   useEffect(() => {
     if (authLoading || !user) return;
     const loadData = async () => {
@@ -58,6 +66,22 @@ function ContractPage() {
     };
     loadData();
   }, [user, authLoading]);
+
+  // Signed URLs für Unterschriften laden, sobald ein Vertrag vorliegt
+  useEffect(() => {
+    if (!contract?.id) return;
+    let cancelled = false;
+    getSigUrlsFn({ data: { contractId: contract.id } })
+      .then((res) => {
+        if (cancelled) return;
+        setEmployeeSigUrl(res.employeeUrl);
+        setCompanySigUrl(res.companyUrl);
+      })
+      .catch(() => {
+        /* still zeigt einfach nichts an */
+      });
+    return () => { cancelled = true; };
+  }, [contract?.id]);
 
   const handleSignContract = async (contentOverride?: string, sigOverride?: string | null) => {
     if (!user || !profile) return;
@@ -105,8 +129,8 @@ function ContractPage() {
         .single();
       if (insertErr) throw insertErr;
 
-      // PDF im Hintergrund generieren
-      supabase.functions.invoke("generate-contract-pdf", { body: { contractId: inserted.id } })
+      // PDF im Hintergrund generieren (TanStack server fn, kein Edge Function)
+      generatePdfFn({ data: { contractId: inserted.id } })
         .catch((e) => console.warn("PDF-Gen:", e));
 
       await supabase.from("profiles").update({
@@ -129,31 +153,11 @@ function ContractPage() {
     if (!contract) return;
     setDownloading(true);
     try {
-      // 1. PDF schon vorhanden? Direkt aus documents-Bucket laden
-      if (contract.pdf_url) {
-        const { data: signed, error } = await supabase.storage
-          .from("documents")
-          .createSignedUrl(contract.pdf_url, 60 * 5);
-        if (!error && signed?.signedUrl) {
-          window.open(signed.signedUrl, "_blank");
-          return;
-        }
-      }
-
-      // 2. Fallback: PDF jetzt generieren lassen
-      const { data, error } = await supabase.functions.invoke("generate-contract-pdf", {
-        body: { contractId: contract.id },
-      });
-      if (error) throw error;
-      const path = (data as any)?.pdfPath;
-      if (!path) throw new Error("PDF konnte nicht erstellt werden");
-
-      setContract({ ...contract, pdf_url: path });
-      const { data: signed, error: signErr } = await supabase.storage
-        .from("documents")
-        .createSignedUrl(path, 60 * 5);
-      if (signErr || !signed?.signedUrl) throw signErr ?? new Error("Signed URL fehlgeschlagen");
-      window.open(signed.signedUrl, "_blank");
+      // Immer (neu) generieren: stellt sicher, dass beide Unterschriften eingebettet sind.
+      const result = await generatePdfFn({ data: { contractId: contract.id } });
+      if (!result?.signedUrl) throw new Error("PDF konnte nicht erstellt werden");
+      setContract({ ...contract, pdf_url: result.pdfPath });
+      window.open(result.signedUrl, "_blank");
     } catch (err: any) {
       toast({
         title: "Download fehlgeschlagen",
@@ -200,10 +204,27 @@ function ContractPage() {
               {contract.generated_content}
             </div>
 
-            {contract.signature_image_url && (
-              <div className="mt-4">
-                <p className="text-xs text-muted-foreground mb-2">Deine Unterschrift:</p>
-                <img src={contract.signature_image_url} alt="Unterschrift" className="h-16 border rounded-lg p-2 bg-card" />
+            {(employeeSigUrl || companySigUrl) && (
+              <div className="grid grid-cols-2 gap-4 mt-4">
+                <div>
+                  <p className="text-xs text-muted-foreground mb-2">Deine Unterschrift</p>
+                  {employeeSigUrl ? (
+                    <img src={employeeSigUrl} alt="Unterschrift Arbeitnehmer" className="h-16 border rounded-lg p-2 bg-card object-contain" />
+                  ) : (
+                    <div className="h-16 border rounded-lg bg-muted/30" />
+                  )}
+                  <p className="text-[10px] text-muted-foreground mt-1">{contract.signed_name}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground mb-2">Unterschrift Arbeitgeber</p>
+                  {companySigUrl ? (
+                    <img src={companySigUrl} alt="Unterschrift Arbeitgeber" className="h-16 border rounded-lg p-2 bg-card object-contain" />
+                  ) : (
+                    <div className="h-16 border rounded-lg border-dashed bg-muted/20 flex items-center justify-center text-[10px] text-muted-foreground px-2 text-center">
+                      Noch keine Firmen-Unterschrift hinterlegt
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 
