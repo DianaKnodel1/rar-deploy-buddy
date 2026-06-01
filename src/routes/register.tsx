@@ -344,6 +344,17 @@ function RegisterPage() {
 
       await supabase.from("profiles").update(profileUpdates).eq("user_id", newUserId);
 
+      // Fallback: the update above runs with the anonymous session because the
+      // user has not yet confirmed their email. RLS may block it silently,
+      // leaving employment_type / employment_start_date NULL. Persist the
+      // payload so /auth/confirmed can re-apply it once the user is logged in.
+      try {
+        ls.setItem(
+          `pending_profile_updates:${newUserId}`,
+          JSON.stringify(profileUpdates),
+        );
+      } catch {}
+
       // Telefon zusätzlich auf auth.users (für spätere SMS-Verifizierung)
       await supabase.auth.updateUser({ phone: phone.trim() }).catch(() => {});
 
