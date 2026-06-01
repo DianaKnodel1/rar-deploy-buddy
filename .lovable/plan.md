@@ -7,6 +7,7 @@ Drei Zustände bekommen automatisch (alle 3 Tage, max. 5 Mails) eine Erinnerung:
 1. **Bewerber akzeptiert, kein Account** — Willkommensmail erneut senden (auch wenn schon mal gesendet)
 2. **Account angelegt, E-Mail nicht bestätigt** — Confirmation-Mail erneut
 3. **Account bestätigt, Registrierung unvollständig** (Personalausweis, Vertrag, Pflichtfelder fehlen) — Erinnerung "Bitte abschließen"
+4. **Mitarbeiter ohne Buchung seit 7+ Tagen** — Erinnerung "Neue Aufträge warten auf dich"
 
 Sequenz pro Zustand: Tag 3, 6, 9, 12, 15 nach dem letzten relevanten Event. Danach Stopp.
 
