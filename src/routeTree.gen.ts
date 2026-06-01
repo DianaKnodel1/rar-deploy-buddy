@@ -27,6 +27,7 @@ import { Route as AdminSmsRouteImport } from './routes/admin.sms'
 import { Route as AdminSettingsRouteImport } from './routes/admin.settings'
 import { Route as AdminRevisionsRouteImport } from './routes/admin.revisions'
 import { Route as AdminReviewsRouteImport } from './routes/admin.reviews'
+import { Route as AdminRemindersRouteImport } from './routes/admin.reminders'
 import { Route as AdminPostRouteImport } from './routes/admin.post'
 import { Route as AdminLandingGeneratorRouteImport } from './routes/admin.landing-generator'
 import { Route as AdminKycRouteImport } from './routes/admin.kyc'
@@ -147,6 +148,11 @@ const AdminRevisionsRoute = AdminRevisionsRouteImport.update({
 const AdminReviewsRoute = AdminReviewsRouteImport.update({
   id: '/reviews',
   path: '/reviews',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminRemindersRoute = AdminRemindersRouteImport.update({
+  id: '/reminders',
+  path: '/reminders',
   getParentRoute: () => AdminRoute,
 } as any)
 const AdminPostRoute = AdminPostRouteImport.update({
@@ -344,6 +350,7 @@ export interface FileRoutesByFullPath {
   '/admin/kyc': typeof AdminKycRoute
   '/admin/landing-generator': typeof AdminLandingGeneratorRoute
   '/admin/post': typeof AdminPostRoute
+  '/admin/reminders': typeof AdminRemindersRoute
   '/admin/reviews': typeof AdminReviewsRoute
   '/admin/revisions': typeof AdminRevisionsRoute
   '/admin/settings': typeof AdminSettingsRoute
@@ -394,6 +401,7 @@ export interface FileRoutesByTo {
   '/admin/kyc': typeof AdminKycRoute
   '/admin/landing-generator': typeof AdminLandingGeneratorRoute
   '/admin/post': typeof AdminPostRoute
+  '/admin/reminders': typeof AdminRemindersRoute
   '/admin/reviews': typeof AdminReviewsRoute
   '/admin/revisions': typeof AdminRevisionsRoute
   '/admin/settings': typeof AdminSettingsRoute
@@ -447,6 +455,7 @@ export interface FileRoutesById {
   '/admin/kyc': typeof AdminKycRoute
   '/admin/landing-generator': typeof AdminLandingGeneratorRoute
   '/admin/post': typeof AdminPostRoute
+  '/admin/reminders': typeof AdminRemindersRoute
   '/admin/reviews': typeof AdminReviewsRoute
   '/admin/revisions': typeof AdminRevisionsRoute
   '/admin/settings': typeof AdminSettingsRoute
@@ -500,6 +509,7 @@ export interface FileRouteTypes {
     | '/admin/kyc'
     | '/admin/landing-generator'
     | '/admin/post'
+    | '/admin/reminders'
     | '/admin/reviews'
     | '/admin/revisions'
     | '/admin/settings'
@@ -550,6 +560,7 @@ export interface FileRouteTypes {
     | '/admin/kyc'
     | '/admin/landing-generator'
     | '/admin/post'
+    | '/admin/reminders'
     | '/admin/reviews'
     | '/admin/revisions'
     | '/admin/settings'
@@ -602,6 +613,7 @@ export interface FileRouteTypes {
     | '/admin/kyc'
     | '/admin/landing-generator'
     | '/admin/post'
+    | '/admin/reminders'
     | '/admin/reviews'
     | '/admin/revisions'
     | '/admin/settings'
@@ -762,6 +774,13 @@ declare module '@tanstack/react-router' {
       path: '/reviews'
       fullPath: '/admin/reviews'
       preLoaderRoute: typeof AdminReviewsRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/reminders': {
+      id: '/admin/reminders'
+      path: '/reminders'
+      fullPath: '/admin/reminders'
+      preLoaderRoute: typeof AdminRemindersRouteImport
       parentRoute: typeof AdminRoute
     }
     '/admin/post': {
@@ -1050,6 +1069,7 @@ interface AdminRouteChildren {
   AdminKycRoute: typeof AdminKycRoute
   AdminLandingGeneratorRoute: typeof AdminLandingGeneratorRoute
   AdminPostRoute: typeof AdminPostRoute
+  AdminRemindersRoute: typeof AdminRemindersRoute
   AdminReviewsRoute: typeof AdminReviewsRoute
   AdminRevisionsRoute: typeof AdminRevisionsRoute
   AdminSettingsRoute: typeof AdminSettingsRoute
@@ -1079,6 +1099,7 @@ const AdminRouteChildren: AdminRouteChildren = {
   AdminKycRoute: AdminKycRoute,
   AdminLandingGeneratorRoute: AdminLandingGeneratorRoute,
   AdminPostRoute: AdminPostRoute,
+  AdminRemindersRoute: AdminRemindersRoute,
   AdminReviewsRoute: AdminReviewsRoute,
   AdminRevisionsRoute: AdminRevisionsRoute,
   AdminSettingsRoute: AdminSettingsRoute,
