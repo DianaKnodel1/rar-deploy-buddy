@@ -18,7 +18,7 @@ interface Props {
 }
 
 const OPTIONS = [
-  { value: "minijob", label: "Minijob", desc: "Bis 556 € / Monat, flexibel" },
+  { value: "minijob", label: "Minijob", desc: "Bis 603 € / Monat, flexibel" },
   { value: "teilzeit", label: "Teilzeit", desc: "20 Stunden / Woche" },
   { value: "vollzeit", label: "Vollzeit", desc: "40 Stunden / Woche" },
 ];
