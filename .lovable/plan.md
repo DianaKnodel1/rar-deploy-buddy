@@ -1,75 +1,82 @@
-## Plan: Großes Update
+# Reminder-System
 
-### A — Onboarding-Tour (Step 6 → 7 Crash)
+## Ziel
 
-Schritt 7 (`calendar`) navigiert über `route: "/appointments"` neu, dabei wird der ganze Tour-State zurückgesetzt, weil `GuidedOnboarding` neu mountet. Lösung:
+Drei Zustände bekommen automatisch (alle 3 Tage, max. 5 Mails) eine Erinnerung:
 
-- Tour-State auf einen globalen Store anheben (Zustand in `localStorage` + Context) → überlebt Routenwechsel.
-- `findTimeoutRef`-Polling robuster (länger als 2s, mit Logging).
-- Tour bricht NIE mehr durch Navigation/Logout/Reload ab; läuft sauber von Schritt 1 bis 15.
+1. **Bewerber akzeptiert, kein Account** — Willkommensmail erneut senden (auch wenn schon mal gesendet)
+2. **Account angelegt, E-Mail nicht bestätigt** — Confirmation-Mail erneut
+3. **Account bestätigt, Registrierung unvollständig** (Personalausweis, Vertrag, Pflichtfelder fehlen) — Erinnerung "Bitte abschließen"
 
-### B — Arbeitsvertrag korrekt zuordnen
+Sequenz pro Zustand: Tag 3, 6, 9, 12, 15 nach dem letzten relevanten Event. Danach Stopp.
 
-Profile haben oft kein `employment_type` (Altdaten). Lösung:
+## Umsetzung
 
-1. In `/contract` (StepContract-Pfad): wenn `profile.employment_type` fehlt, **inline-Auswahl Minijob/Teilzeit/Vollzeit** anzeigen (statt zu blocken). Wahl wird in `profiles.employment_type` persistiert und dann zum entsprechenden Tenant-Template geladen.
-2. Template-Lookup bleibt wie er ist (tenant_id + employment_type + is_active → highest version) → liefert automatisch:
-   - Kadermarketing-Tenant + Minijob → KM-Minijob-Vertrag
-   - Digital DGI + Vollzeit → DGI-Vollzeit-Vertrag
-3. Fallback-Hinweis (kein passendes Template) klar anzeigen.
+### 1. Migration: `reminder_log`
 
-### C — Erfolgsmeldung nach Abschluss
+```sql
+create table public.reminder_log (
+  id uuid primary key default gen_random_uuid(),
+  email text not null,
+  tenant_id uuid references public.tenants(id) on delete cascade,
+  reminder_type text not null,        -- 'invite' | 'confirm_email' | 'complete_registration'
+  attempt int not null,               -- 1..5
+  sent_at timestamptz not null default now(),
+  status text not null default 'sent',-- 'sent' | 'failed' | 'skipped'
+  error text
+);
+create index on public.reminder_log (email, reminder_type, sent_at desc);
+grant select, insert on public.reminder_log to service_role;
+alter table public.reminder_log enable row level security;
+create policy "service only" on public.reminder_log for all to service_role using (true);
+```
 
-Nach Abschluss aller Schritte (KYC eingereicht ODER Personalausweis hochgeladen + Vertrag unterzeichnet) zeigt das Dashboard eine prominente Karte:
+### 2. Neue Edge Function `send-reminders`
 
-> "Deine Registrierung wird geprüft. Der Vorgang dauert i.d.R. 24 Stunden."
+- Wird per `pg_cron` 1×/Tag um 09:00 Europe/Berlin getriggert (HTTP-Call gegen die Function).
+- Logik je Typ:
+  - **invite**: `applications` mit `status='akzeptiert'` JOIN `auth.users` LEFT — nur wo kein User existiert. Reuse von `send-invitation-email`-HTML, schreibt `reminder_log`.
+  - **confirm_email**: `auth.users` mit `email_confirmed_at IS NULL` → ruft intern `resend-signup-confirmation` Logik auf.
+  - **complete_registration**: `profiles` wo `onboarding_status != 'completed'` AND `email_confirmed_at IS NOT NULL` → branded Reminder-Mail mit Link `/onboarding`.
+- Gates pro Mail:
+  - count(reminder_log) < 5
+  - last sent > 3 Tage her
+  - relevantes Event (Annahme / Account-Erstellung / Bestätigung) > 3 Tage her
 
-Bleibt sichtbar bis `profiles.status = 'angenommen'`.
+### 3. pg_cron Job (in Migration)
 
-### D — Admin: Mitarbeiter-Verwaltung
+```sql
+select cron.schedule(
+  'send-reminders-daily', '0 8 * * *',
+  $$ select net.http_post(
+       url := 'https://<supabase-url>/functions/v1/send-reminders',
+       headers := jsonb_build_object('Authorization','Bearer <service-role>')
+     ); $$
+);
+```
 
-1. **Tenant-Spalte** in `admin.employees.index.tsx` ergänzen (mit Badge).
-2. **Hart-Löschen-Button** mit Bestätigungs-Dialog ("MITARBEITER LÖSCHEN" eintippen). Ruft neue Server-Function `deleteEmployee` auf, die per `supabaseAdmin`:
-   - alle abhängigen Daten löscht (cascade über DB-Constraints — wir prüfen welche Tabellen FK haben)
-   - `auth.admin.deleteUser(userId)` aufruft
-3. **Teamleiter-Profilbild**: Bug in `useTeamLeader` / Avatar-Component beheben — Storage-Pfad `team-leaders/<leaderId>.png` → signed URL.
+(Service-Role-Key wird über Vault gelesen, nicht inline.)
 
-### E — Chat-Verbesserungen
+### 4. Admin-Button "Alt-Bewerber re-inviten"
 
-1. **Zeilenumbruch im Chat-Input**: `<Input>` → `<Textarea>` mit `Shift+Enter` = Newline, `Enter` = Senden. Gilt für `/_employee/chat.tsx` und `admin.chat.tsx`.
-2. **Realtime aktivieren** (Migration):
-   ```sql
-   ALTER TABLE public.chat_messages REPLICA IDENTITY FULL;
-   ALTER PUBLICATION supabase_realtime ADD TABLE public.chat_messages;
-   ```
-   Nachrichten erscheinen sofort bei beiden Seiten ohne Reload.
-3. **Chat-Performance**: 
-   - Sidebar/Chat-Liste lädt aktuell pro Mitarbeiter `chat_messages` einzeln → durch eine Aggregations-Query ersetzen (last_message + unread_count via einer SQL-Funktion mit `lateral join`).
-   - Indizes prüfen/erstellen: `chat_messages(sender_id, receiver_id, created_at desc)`.
-4. **Letzter Login**: 
-   - In Chat-Liste neben Mitarbeitername: "Zuletzt aktiv: vor 2h" oder "Online".
-   - Quelle: `auth.users.last_sign_in_at` (über admin-Function geladen, da nicht in public).
+In `/admin/applications`: Button **"Erinnerungen jetzt senden"** der die Function manuell triggert (für den initialen Sweep der ~150 Bewerber).
 
-### Technische Details
+### 5. Mail-Templates (in der Function inline, im Stil der bestehenden Mails)
 
-- **Migrationen** (SQL):
-  - Realtime auf `chat_messages` aktivieren
-  - Index `idx_chat_messages_pair_time` auf `(sender_id, receiver_id, created_at desc)`
-  - SQL-Function `get_chat_thread_summaries(_admin_id uuid)` für effiziente Chat-Liste
-- **Server-Functions** (`createServerFn`):
-  - `deleteEmployee({ userId })` – admin-only, hart-löscht inkl. auth.
-  - `getEmployeeLastSignIn({ userIds: string[] })` – Map userId → last_sign_in_at.
-- **UI-Änderungen**:
-  - `GuidedOnboarding` → State in `localStorage` (überlebt Mount/Unmount).
-  - `/_employee/contract.tsx` → Inline-Auswahl der Beschäftigungsart.
-  - `/_employee/dashboard.tsx` → "In Prüfung"-Karte.
-  - `admin.employees.index.tsx` → Tenant-Spalte + Löschen-Button.
-  - `/_employee/chat.tsx` + `admin.chat.tsx` → Textarea + Realtime + Last-Login.
-  - `useTeamLeader` Avatar-Fix.
+- **invite-reminder**: "Erinnerung: Deine Registrierung wartet auf dich" + Portal-Link
+- **confirm-reminder**: "Bitte bestätige deine E-Mail" + neuer Confirmation-Link
+- **completion-reminder**: "Bitte schließe deine Registrierung ab — es fehlen noch: {liste}" + Login-Link
 
-### Ablauf
+## Was nach Approval passiert
 
-1. Migration anlegen (Realtime + Index + RPC).
-2. Backend-Functions (`deleteEmployee`, `getEmployeeLastSignIn`).
-3. UI-Änderungen.
-4. Build/Deploy-Anleitung am Ende.
+1. Migration mit `reminder_log` + cron schedule
+2. Edge Function `supabase/functions/send-reminders/index.ts` (modular, drei Handler)
+3. Admin-Button im Bewerbungs-Screen
+4. Deploy-Hinweis: `supabase functions deploy send-reminders --no-verify-jwt` + `pg_cron`/`pg_net` Extensions aktivieren
+
+## Offene Punkte (bitte bestätigen)
+
+- **Intervall**: Tag 3, 6, 9, 12, 15 — okay so, oder anders staffeln (z.B. 3/5/8/12/15)?
+- **Sendezeit**: 09:00 Europe/Berlin?
+- **Stop-Bedingungen**: Soll bei Status `abgelehnt` oder gelöschter Bewerbung sofort gestoppt werden? (Default: ja)
+- **Initialer Sweep**: Sollen die ~150 Alt-Bewerber alle auf einmal eine Mail bekommen, oder über die normale Cron-Mechanik gestaffelt (Tag 1 = alle die seit >3 Tagen akzeptiert sind)?
