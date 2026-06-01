@@ -38,6 +38,14 @@ interface TenantEmail {
   email_signature: string | null;
   team_leader_name: string;
   company_email?: string | null;
+  reminder_invite_subject: string | null;
+  reminder_invite_body: string | null;
+  reminder_confirm_subject: string | null;
+  reminder_confirm_body: string | null;
+  reminder_completion_subject: string | null;
+  reminder_completion_body: string | null;
+  reminder_no_booking_subject: string | null;
+  reminder_no_booking_body: string | null;
 }
 
 const PLACEHOLDERS = [
@@ -50,6 +58,9 @@ const PLACEHOLDERS = [
   { key: "tenant_name", label: "Tenant-Name", preview: "BCU Beratung" },
   { key: "support_email", label: "Support-E-Mail", preview: "support@example.com" },
   { key: "reset_link", label: "Reset-Link", preview: "https://portal.example.com/reset-password?token=xyz" },
+  { key: "login_link", label: "Login-Link", preview: "https://portal.example.com/login" },
+  { key: "confirmation_link", label: "Bestätigungs-Link", preview: "https://portal.example.com/auth/confirmed?token_hash=…" },
+  { key: "booking_link", label: "Aufträge-Link", preview: "https://portal.example.com/appointments" },
 ];
 
 function replacePlaceholders(text: string, tenant: TenantEmail): string {
