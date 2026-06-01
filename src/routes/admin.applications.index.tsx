@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { EmptyState } from "@/components/EmptyState";
-import { FileText, Download, Trash2, CheckCircle2, XCircle, Loader2 } from "lucide-react";
+import { FileText, Download, Trash2, CheckCircle2, XCircle, Loader2, Send } from "lucide-react";
 import { exportToCsv } from "@/lib/csv-export";
 import { TableSkeleton, PageHeaderSkeleton } from "@/components/SkeletonLoaders";
 import { ImportApplicationsDialog } from "@/components/ImportApplicationsDialog";
@@ -35,6 +35,7 @@ function AdminApplicationsPage() {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkLoading, setBulkLoading] = useState(false);
+  const [remindersLoading, setRemindersLoading] = useState(false);
 
   useEffect(() => {
     supabase.from("tenants").select("id, name, domain").then(({ data }) => {
@@ -43,6 +44,27 @@ function AdminApplicationsPage() {
       setTenantMap(map);
     });
   }, []);
+
+  const triggerReminders = async (dryRun: boolean) => {
+    setRemindersLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("send-reminders", {
+        body: { dry_run: dryRun },
+      });
+      if (error) throw error;
+      const sent = data?.sent ?? 0;
+      const skipped = data?.skipped ?? 0;
+      const failed = data?.failed ?? 0;
+      toast({
+        title: dryRun ? "Vorschau (kein Versand)" : "Erinnerungen verarbeitet",
+        description: `${sent} gesendet · ${skipped} übersprungen · ${failed} fehlgeschlagen`,
+      });
+    } catch (err: any) {
+      toast({ title: "Fehler", description: err.message, variant: "destructive" });
+    } finally {
+      setRemindersLoading(false);
+    }
+  };
 
   const acceptApplication = async (app: typeof applications[0], e: React.MouseEvent) => {
     e.stopPropagation();
