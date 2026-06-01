@@ -318,7 +318,7 @@ function ContractPage() {
             </div>
 
             <div className="rounded-xl border border-border bg-muted/30 p-5 max-h-96 overflow-y-auto text-xs text-foreground/80 leading-relaxed whitespace-pre-wrap font-mono">
-              {contract.generated_content}
+              {applyEmploymentStartDate(contract.generated_content, formatGermanDate(profile?.employment_start_date))}
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
