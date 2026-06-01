@@ -49,7 +49,7 @@ function ContractPage() {
     const loadData = async () => {
       const [{ data: contracts }, { data: profileData }] = await Promise.all([
         supabase.from("contracts").select("*").eq("user_id", user.id).order("signed_at", { ascending: false }).limit(1),
-        supabase.from("profiles").select("full_name, street, zip_code, city, address, employment_type, contract_signed_at, tenant_id").eq("user_id", user.id).maybeSingle(),
+        supabase.from("profiles").select("full_name, street, zip_code, city, address, employment_type, employment_start_date, contract_signed_at, tenant_id").eq("user_id", user.id).maybeSingle(),
       ]);
       if (contracts && contracts.length > 0) setContract(contracts[0] as unknown as Contract);
       setProfile(profileData);
@@ -293,7 +293,7 @@ function ContractPage() {
               zipCode={profile?.zip_code ?? ""}
               city={profile?.city ?? ""}
               employmentType={profile?.employment_type ?? "minijob"}
-              startDate={undefined}
+              startDate={profile?.employment_start_date ? new Date(profile.employment_start_date) : undefined}
               agreed={agreed}
               setAgreed={setAgreed}
               signatureName={signatureName}
