@@ -188,9 +188,19 @@ function ContractPage() {
       if (sigOverride) {
         const blob = await fetch(sigOverride).then((r) => r.blob());
         const filePath = `${user.id}/${Date.now()}.png`;
-        const { data: uploaded } = await supabase.storage
+        const { data: uploaded, error: upErr } = await supabase.storage
           .from("signatures")
-          .upload(filePath, blob, { contentType: "image/png" });
+          .upload(filePath, blob, { contentType: "image/png", upsert: true });
+        if (upErr) {
+          console.error("Signatur-Upload fehlgeschlagen:", upErr);
+          toast({
+            title: "Unterschrift konnte nicht gespeichert werden",
+            description: upErr.message,
+            variant: "destructive",
+          });
+          setSigning(false);
+          return;
+        }
         if (uploaded?.path) signaturePath = uploaded.path;
       }
 
