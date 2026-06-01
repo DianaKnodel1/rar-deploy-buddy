@@ -302,6 +302,14 @@ function AdminEmployeesPage() {
 
               return (
                 <tr key={profile.id} className={`hover:bg-muted/20 transition-colors cursor-pointer group ${isDeactivated ? "opacity-50" : ""}`} onClick={() => navigate(`/admin/employees/${profile.user_id}`)}>
+                  <td className="px-3 py-3.5" onClick={(e) => e.stopPropagation()}>
+                    {!isAdmin && (
+                      <Checkbox
+                        checked={selected.has(profile.user_id)}
+                        onCheckedChange={() => toggleSelect(profile.user_id)}
+                      />
+                    )}
+                  </td>
                   <td className="px-5 py-3.5">
                     <div className="flex items-center gap-2">
                       <div>
