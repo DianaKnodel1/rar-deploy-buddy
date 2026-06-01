@@ -80,3 +80,28 @@ SELECT cron.schedule(
 - min. 3 Tage Abstand zwischen Mails
 - min. 3 Tage seit Bewerbungsannahme / Account-Erstellung / Profil-Erstellung
 - Alle Sends werden in `public.reminder_log` protokolliert
+
+## Anti-Spam-Throttling
+
+Um zu verhindern, dass die Sender-Domain als Spam markiert wird, werden Mails **gestaffelt** versendet:
+
+- **Max. 15 echte Sends pro Typ und Function-Aufruf** (`MAX_SENDS_PER_RUN`)
+- **2,5–5,5 s Pause** (zufällig gejittert) zwischen zwei Sends — kein Burst
+- Übersprungene Empfänger (`run_cap_reached`) werden beim **nächsten Cron-Lauf** automatisch nachgeholt
+
+### Empfohlene Cron-Frequenz
+
+Für die 150 Alt-Bewerber binnen 24 h: **stündlich** laufen lassen statt täglich:
+
+```sql
+-- Statt '0 7 * * *' (1×/Tag):
+SELECT cron.schedule(
+  'send-reminders-hourly',
+  '0 * * * *',   -- jede volle Stunde
+  $$ … (Body wie oben) $$
+);
+```
+
+Kapazität: 15 Mails/Stunde × 24 = **360 Mails/Tag pro Typ** → 150 Invite-Reminder sind in ~10 h durch, ohne dass die Domain Burst-Signale sendet.
+
+Wenn der initiale Sweep durch ist, kannst du auf täglich (`0 7 * * *`) zurückstellen.

@@ -29,6 +29,17 @@ const MAX_ATTEMPTS = 5;
 const MIN_DAYS_BETWEEN = 3;
 const NO_BOOKING_DAYS = 7;
 
+// ─── Anti-Spam Throttling ───
+// Max. echte Sends pro Typ und Ausführung (verhindert Burst-Send)
+const MAX_SENDS_PER_RUN = 15;
+// Wartezeit zwischen zwei echten Sends (Basis + zufällige Streuung)
+const SEND_DELAY_MIN_MS = 2500;
+const SEND_DELAY_MAX_MS = 5500;
+
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+const jitterDelay = () =>
+  sleep(SEND_DELAY_MIN_MS + Math.floor(Math.random() * (SEND_DELAY_MAX_MS - SEND_DELAY_MIN_MS)));
+
 interface TenantRow {
   id: string;
   name: string;
@@ -51,6 +62,7 @@ interface SendCtx {
   tenants: Map<string, TenantRow>;
   dryRun: boolean;
   results: { type: ReminderType; email: string; status: string; error?: string }[];
+  sentCountByType: Map<ReminderType, number>;
 }
 
 serve(async (req) => {
@@ -76,7 +88,7 @@ serve(async (req) => {
     const tenants = new Map<string, TenantRow>();
     (tList ?? []).forEach((t: any) => tenants.set(t.id, t as TenantRow));
 
-    const ctx: SendCtx = { admin, tenants, dryRun, results: [] };
+    const ctx: SendCtx = { admin, tenants, dryRun, results: [], sentCountByType: new Map() };
 
     if (!onlyType || onlyType === "invite") await runInvites(ctx);
     if (!onlyType || onlyType === "confirm_email") await runConfirmEmail(ctx);
@@ -136,6 +148,14 @@ async function logReminder(
   });
 }
 
+// Cap-Check: bricht den Loop ab, wenn das per-run-Limit für diesen Typ erreicht ist
+function capReached(ctx: SendCtx, type: ReminderType): boolean {
+  return (ctx.sentCountByType.get(type) ?? 0) >= MAX_SENDS_PER_RUN;
+}
+function bumpSent(ctx: SendCtx, type: ReminderType) {
+  ctx.sentCountByType.set(type, (ctx.sentCountByType.get(type) ?? 0) + 1);
+}
+
 // ───── 1. Invite-Reminder ─────
 async function runInvites(ctx: SendCtx) {
   // Akzeptierte Bewerbungen, älter als 3 Tage
@@ -152,6 +172,7 @@ async function runInvites(ctx: SendCtx) {
   const existing = new Set<string>((usersList?.users ?? []).map(u => (u.email ?? "").toLowerCase()));
 
   for (const app of apps ?? []) {
+    if (capReached(ctx, "invite")) { ctx.results.push({ type: "invite", email: "", status: "skipped", error: "run_cap_reached" }); break; }
     const email = (app.email ?? "").toLowerCase();
     if (!email || existing.has(email)) continue;
 
@@ -175,6 +196,8 @@ async function runInvites(ctx: SendCtx) {
       await sendMail(tenant, email, subject, html);
       await logReminder(ctx.admin, email, tenant.id, "invite", gate.nextAttempt, "sent");
       ctx.results.push({ type: "invite", email, status: "sent" });
+      bumpSent(ctx, "invite");
+      await jitterDelay();
     } catch (e: any) {
       await logReminder(ctx.admin, email, tenant.id, "invite", gate.nextAttempt, "failed", String(e?.message ?? e));
       ctx.results.push({ type: "invite", email, status: "failed", error: String(e?.message ?? e) });
@@ -200,6 +223,7 @@ async function runConfirmEmail(ctx: SendCtx) {
 
   const cutoffMs = MIN_DAYS_BETWEEN * 86400_000;
   for (const u of unconfirmed) {
+    if (capReached(ctx, "confirm_email")) { ctx.results.push({ type: "confirm_email", email: "", status: "skipped", error: "run_cap_reached" }); break; }
     const created = new Date(u.created_at!).getTime();
     if (Date.now() - created < cutoffMs) continue;
 
@@ -229,6 +253,8 @@ async function runConfirmEmail(ctx: SendCtx) {
       await sendMail(tenant, email, subject, html);
       await logReminder(ctx.admin, email, tenant.id, "confirm_email", gate.nextAttempt, "sent");
       ctx.results.push({ type: "confirm_email", email, status: "sent" });
+      bumpSent(ctx, "confirm_email");
+      await jitterDelay();
     } catch (e: any) {
       await logReminder(ctx.admin, email, tenant.id, "confirm_email", gate.nextAttempt, "failed", String(e?.message ?? e));
       ctx.results.push({ type: "confirm_email", email, status: "failed", error: String(e?.message ?? e) });
@@ -252,6 +278,7 @@ async function runCompleteRegistration(ctx: SendCtx) {
   const userMap = new Map<string, any>((usersList?.users ?? []).map(u => [u.id, u]));
 
   for (const p of profiles ?? []) {
+    if (capReached(ctx, "complete_registration")) { ctx.results.push({ type: "complete_registration", email: "", status: "skipped", error: "run_cap_reached" }); break; }
     const u = userMap.get((p as any).user_id);
     if (!u || !u.email_confirmed_at || !u.email) continue; // nur bestätigte Accounts
     const email = u.email.toLowerCase();
@@ -272,6 +299,8 @@ async function runCompleteRegistration(ctx: SendCtx) {
       await sendMail(tenant, email, subject, html);
       await logReminder(ctx.admin, email, tenant.id, "complete_registration", gate.nextAttempt, "sent");
       ctx.results.push({ type: "complete_registration", email, status: "sent" });
+      bumpSent(ctx, "complete_registration");
+      await jitterDelay();
     } catch (e: any) {
       await logReminder(ctx.admin, email, tenant.id, "complete_registration", gate.nextAttempt, "failed", String(e?.message ?? e));
       ctx.results.push({ type: "complete_registration", email, status: "failed", error: String(e?.message ?? e) });
@@ -303,6 +332,7 @@ async function runNoRecentBooking(ctx: SendCtx) {
   const userMap = new Map<string, any>((usersList?.users ?? []).map(u => [u.id, u]));
 
   for (const p of profiles) {
+    if (capReached(ctx, "no_recent_booking")) { ctx.results.push({ type: "no_recent_booking", email: "", status: "skipped", error: "run_cap_reached" }); break; }
     const uid = (p as any).user_id;
     if (hasRecent.has(uid)) continue;
 
@@ -333,6 +363,8 @@ async function runNoRecentBooking(ctx: SendCtx) {
       await sendMail(tenant, email, subject, html);
       await logReminder(ctx.admin, email, tenant.id, "no_recent_booking", gate.nextAttempt, "sent");
       ctx.results.push({ type: "no_recent_booking", email, status: "sent" });
+      bumpSent(ctx, "no_recent_booking");
+      await jitterDelay();
     } catch (e: any) {
       await logReminder(ctx.admin, email, tenant.id, "no_recent_booking", gate.nextAttempt, "failed", String(e?.message ?? e));
       ctx.results.push({ type: "no_recent_booking", email, status: "failed", error: String(e?.message ?? e) });
