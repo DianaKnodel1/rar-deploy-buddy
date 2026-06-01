@@ -134,6 +134,7 @@ export function SignatureGenerator({ tenantId, currentUrl, onSaved }: Props) {
       return;
     }
     toast({ title: "Unterschrift entfernt" });
+    setPreviewUrl(null);
     onSaved?.(null);
   };
 
