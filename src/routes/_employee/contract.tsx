@@ -23,6 +23,7 @@ import { CalendarDays } from "lucide-react";
 import { format, addDays, startOfDay, isBefore } from "date-fns";
 import { de } from "date-fns/locale";
 import { cn } from "@/lib/utils";
+import { applyEmploymentStartDate, formatGermanDate } from "@/lib/contract-utils";
 
 const EMPLOYMENT_LABELS: Record<string, string> = {
   minijob: "Minijob", teilzeit: "Teilzeit", vollzeit: "Vollzeit",
@@ -35,6 +36,13 @@ const dateOnlyToLocalDate = (value: string) => {
   const [year, month, day] = value.split("-").map(Number);
   return new Date(year, (month ?? 1) - 1, day ?? 1);
 };
+
+function extractStoragePath(value: string | null): string | null {
+  if (!value) return null;
+  if (!/^https?:\/\//i.test(value)) return value.replace(/^signatures\//, "");
+  const match = value.match(/\/storage\/v1\/object\/(?:public|sign)\/signatures\/([^?]+)/);
+  return match?.[1] ? decodeURIComponent(match[1]) : null;
+}
 
 function StartDateStep({ userId, onSaved, onBack }: { userId: string; onSaved: (d: string) => void; onBack: () => void }) {
   const { toast } = useToast();
