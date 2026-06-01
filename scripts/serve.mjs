@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
-// Self-hosted Bun-Server für TanStack Start.
+// Self-hosted HTTP-Server für TanStack Start.
 // Importiert den gebauten Worker-Handler (export default { fetch })
-// aus dist/server/server.js und serviert ihn via Bun.serve().
+// aus dist/server/server.js und serviert ihn als langlebigen Prozess für systemd.
 
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
@@ -22,14 +22,20 @@ if (typeof handler?.fetch !== "function") {
 const port = Number(process.env.PORT ?? 3000);
 const hostname = process.env.HOST ?? "127.0.0.1";
 
+async function readBody(req) {
+  const chunks = [];
+  for await (const chunk of req) chunks.push(chunk);
+  return Buffer.concat(chunks);
+}
+
 const server = createServer(async (req, res) => {
   try {
     const url = new URL(req.url ?? "/", `http://${req.headers.host ?? `${hostname}:${port}`}`);
+    const hasBody = req.method !== "GET" && req.method !== "HEAD";
     const init = {
       method: req.method,
       headers: req.headers,
-      body: req.method === "GET" || req.method === "HEAD" ? undefined : req,
-      duplex: "half",
+      body: hasBody ? await readBody(req) : undefined,
     };
     const response = await handler.fetch(new Request(url, init), process.env, {});
 
