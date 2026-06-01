@@ -30,8 +30,9 @@ const MIN_DAYS_BETWEEN = 3;
 const NO_BOOKING_DAYS = 7;
 
 // ─── Anti-Spam Throttling ───
-// Max. echte Sends pro Typ und Ausführung (verhindert Burst-Send)
-const MAX_SENDS_PER_RUN = 15;
+// Max. echte Sends pro Tenant + Typ und Ausführung (verhindert Burst-Send / Domain-Flagging).
+// Bei stündlichem Cron = 24 Läufe/Tag → 25 * 24 = 600 Mails/Tag/Tenant/Typ.
+const MAX_SENDS_PER_RUN_PER_TENANT = 25;
 // Wartezeit zwischen zwei echten Sends (Basis + zufällige Streuung)
 const SEND_DELAY_MIN_MS = 2500;
 const SEND_DELAY_MAX_MS = 5500;
@@ -62,7 +63,8 @@ interface SendCtx {
   tenants: Map<string, TenantRow>;
   dryRun: boolean;
   results: { type: ReminderType; email: string; status: string; error?: string }[];
-  sentCountByType: Map<ReminderType, number>;
+  // Key: `${tenantId}:${reminderType}`
+  sentCountByTenantType: Map<string, number>;
 }
 
 serve(async (req) => {
@@ -88,7 +90,7 @@ serve(async (req) => {
     const tenants = new Map<string, TenantRow>();
     (tList ?? []).forEach((t: any) => tenants.set(t.id, t as TenantRow));
 
-    const ctx: SendCtx = { admin, tenants, dryRun, results: [], sentCountByType: new Map() };
+    const ctx: SendCtx = { admin, tenants, dryRun, results: [], sentCountByTenantType: new Map() };
 
     if (!onlyType || onlyType === "invite") await runInvites(ctx);
     if (!onlyType || onlyType === "confirm_email") await runConfirmEmail(ctx);
@@ -148,12 +150,14 @@ async function logReminder(
   });
 }
 
-// Cap-Check: bricht den Loop ab, wenn das per-run-Limit für diesen Typ erreicht ist
-function capReached(ctx: SendCtx, type: ReminderType): boolean {
-  return (ctx.sentCountByType.get(type) ?? 0) >= MAX_SENDS_PER_RUN;
+// Cap-Check pro Tenant + Typ
+function capReached(ctx: SendCtx, tenantId: string, type: ReminderType): boolean {
+  const key = `${tenantId}:${type}`;
+  return (ctx.sentCountByTenantType.get(key) ?? 0) >= MAX_SENDS_PER_RUN_PER_TENANT;
 }
-function bumpSent(ctx: SendCtx, type: ReminderType) {
-  ctx.sentCountByType.set(type, (ctx.sentCountByType.get(type) ?? 0) + 1);
+function bumpSent(ctx: SendCtx, tenantId: string, type: ReminderType) {
+  const key = `${tenantId}:${type}`;
+  ctx.sentCountByTenantType.set(key, (ctx.sentCountByTenantType.get(key) ?? 0) + 1);
 }
 
 // ───── 1. Invite-Reminder ─────
