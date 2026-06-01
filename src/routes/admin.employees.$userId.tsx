@@ -22,11 +22,16 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { requestContractResign } from "@/lib/admin-contract.functions";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import {
   ArrowLeft, User, ShieldCheck, FileText, ClipboardList, Wallet,
   AlertTriangle, CheckCircle2, XCircle, Plus, Trash2, StickyNote,
   Download, Eye, KeyRound, Loader2, Mail, Shield, Pencil, X, Check,
-  MessageSquare, Phone, Power, FolderOpen, History, Send,
+  MessageSquare, Phone, Power, FolderOpen, History, Send, RotateCcw,
 } from "lucide-react";
 
 interface ActivityLogEntry {
