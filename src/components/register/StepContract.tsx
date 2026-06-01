@@ -45,6 +45,7 @@ export default function StepContract({
       setLoadingTemplate(true);
       let companyName = "";
       let companyCeoName = "";
+      let companyAddress = "";
 
       // Resolve tenant id (fallback to first active tenant for preview/landing)
       let resolvedTenantId = tenantId;
@@ -54,7 +55,7 @@ export default function StepContract({
         // Load actual tenant by ID (works for authenticated users via RLS)
         const { data: t } = await supabase
           .from("tenants")
-          .select("id, name, company_ceo_name, company_signature_url")
+          .select("id, name, company_ceo_name, company_signature_url, company_address")
           .eq("id", resolvedTenantId)
           .maybeSingle();
         if (t) tenantRow = t;
@@ -74,6 +75,7 @@ export default function StepContract({
         setTenantData(tenantRow as any);
         companyName = tenantRow.name ?? "";
         companyCeoName = tenantRow.company_ceo_name ?? "";
+        companyAddress = (tenantRow as any).company_address ?? "";
       }
 
       const formattedStart = startDate
@@ -87,6 +89,7 @@ export default function StepContract({
         employmentType,
         companyName,
         companyCeoName,
+        companyAddress,
         startDate: formattedStart,
       };
 
