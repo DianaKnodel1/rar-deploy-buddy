@@ -41,9 +41,27 @@ export function SignatureGenerator({ tenantId, currentUrl, onSaved }: Props) {
   const [name, setName] = useState("");
   const [fontIdx, setFontIdx] = useState(0);
   const [saving, setSaving] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => { ensureFontsLoaded(); }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!currentUrl) {
+      setPreviewUrl(null);
+      return;
+    }
+    if (/^https?:\/\//i.test(currentUrl)) {
+      setPreviewUrl(currentUrl);
+      return;
+    }
+    supabase.storage.from("signatures").createSignedUrl(currentUrl, 60 * 10)
+      .then(({ data }) => {
+        if (!cancelled) setPreviewUrl(data?.signedUrl ?? null);
+      });
+    return () => { cancelled = true; };
+  }, [currentUrl]);
 
   // Re-render canvas preview whenever name/font changes
   useEffect(() => {
@@ -95,7 +113,8 @@ export function SignatureGenerator({ tenantId, currentUrl, onSaved }: Props) {
 
       toast({ title: "Unterschrift gespeichert" });
       const { data: signed } = await supabase.storage.from("signatures").createSignedUrl(path, 60 * 10);
-      onSaved?.(signed?.signedUrl ?? path);
+      setPreviewUrl(signed?.signedUrl ?? null);
+      onSaved?.(path);
     } catch (err: any) {
       toast({ title: "Fehler", description: err.message, variant: "destructive" });
     } finally {
@@ -120,10 +139,10 @@ export function SignatureGenerator({ tenantId, currentUrl, onSaved }: Props) {
 
   return (
     <div className="space-y-3">
-      {currentUrl && (
+      {previewUrl && (
         <Card className="p-3 flex items-center justify-between bg-muted/30">
           <div className="flex items-center gap-3">
-            <img src={currentUrl} alt="Aktuelle Unterschrift" className="h-12 max-w-[200px] object-contain bg-white rounded border" />
+            <img src={previewUrl} alt="Aktuelle Unterschrift" className="h-12 max-w-[200px] object-contain bg-white rounded border" />
             <div>
               <p className="text-xs font-medium text-foreground">Aktuelle Unterschrift</p>
               <p className="text-[10px] text-muted-foreground">Wird auf Verträgen verwendet</p>
