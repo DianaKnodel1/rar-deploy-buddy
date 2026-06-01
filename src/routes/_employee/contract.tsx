@@ -161,17 +161,34 @@ function ContractPage() {
   useEffect(() => {
     if (!contract?.id) return;
     let cancelled = false;
+    setEmpSigError(false);
+    setCompSigError(false);
+    setEmployeeSigUrl(null);
+    setCompanySigUrl(null);
     getSigUrlsFn({ data: { contractId: contract.id } })
       .then((res) => {
         if (cancelled) return;
-        setEmployeeSigUrl(res.employeeUrl);
-        setCompanySigUrl(res.companyUrl);
+        setEmployeeSigUrl(res.employeeUrl ?? null);
+        setCompanySigUrl(res.companyUrl ?? null);
       })
       .catch(() => {
-        /* still zeigt einfach nichts an */
+        if (cancelled) return;
+        setEmployeeSigUrl(null);
+        setCompanySigUrl(null);
       });
     return () => { cancelled = true; };
   }, [contract?.id]);
+
+  useEffect(() => {
+    if (!contract?.signature_image_url || employeeSigUrl) return;
+    const path = extractStoragePath(contract.signature_image_url);
+    if (!path) return;
+    let cancelled = false;
+    supabase.storage.from("signatures").createSignedUrl(path, 3600).then(({ data }) => {
+      if (!cancelled) setEmployeeSigUrl(data?.signedUrl ?? null);
+    });
+    return () => { cancelled = true; };
+  }, [contract?.signature_image_url, employeeSigUrl]);
 
   const handleSignContract = async (contentOverride?: string, sigOverride?: string | null) => {
     if (!user || !profile) return;
@@ -219,7 +236,7 @@ function ContractPage() {
           user_id: user.id,
           tenant_id: profile.tenant_id,
           employment_type: profile.employment_type as any,
-          generated_content: contentOverride ?? "",
+          generated_content: applyEmploymentStartDate(contentOverride ?? "", formatGermanDate(profile.employment_start_date)),
           signed_name: signatureName.trim(),
           signature_image_url: signaturePath,
           signed_at: now,
