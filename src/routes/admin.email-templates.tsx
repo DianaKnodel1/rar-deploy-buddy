@@ -284,11 +284,21 @@ function AdminEmailTemplatesPage() {
   const [senderName, setSenderName] = useState("");
   const [replyTo, setReplyTo] = useState("");
 
+  // Reminder-Templates
+  const [rInviteSubject, setRInviteSubject] = useState("");
+  const [rInviteBody, setRInviteBody] = useState("");
+  const [rConfirmSubject, setRConfirmSubject] = useState("");
+  const [rConfirmBody, setRConfirmBody] = useState("");
+  const [rCompletionSubject, setRCompletionSubject] = useState("");
+  const [rCompletionBody, setRCompletionBody] = useState("");
+  const [rNoBookingSubject, setRNoBookingSubject] = useState("");
+  const [rNoBookingBody, setRNoBookingBody] = useState("");
+
   const loadTenants = async () => {
     setLoading(true);
     const { data } = await supabase
       .from("tenants")
-      .select("id, name, domain, primary_color, logo_url, sender_email, sender_name, reply_to_email, smtp_host, smtp_port, smtp_username, smtp_password, welcome_email_subject, welcome_email_body, reset_email_subject, reset_email_body, email_signature, team_leader_name")
+      .select("id, name, domain, primary_color, logo_url, sender_email, sender_name, reply_to_email, smtp_host, smtp_port, smtp_username, smtp_password, welcome_email_subject, welcome_email_body, reset_email_subject, reset_email_body, email_signature, team_leader_name, reminder_invite_subject, reminder_invite_body, reminder_confirm_subject, reminder_confirm_body, reminder_completion_subject, reminder_completion_body, reminder_no_booking_subject, reminder_no_booking_body")
       .order("name");
     setTenants((data as any as TenantEmail[]) ?? []);
     if (data && data.length > 0 && !selectedTenantId) {
@@ -312,6 +322,14 @@ function AdminEmailTemplatesPage() {
     setSignature(t.email_signature || "");
     setSenderName(t.sender_name || "");
     setReplyTo(t.reply_to_email || "");
+    setRInviteSubject(t.reminder_invite_subject || REMINDER_DEFAULTS.invite.subject);
+    setRInviteBody(t.reminder_invite_body || REMINDER_DEFAULTS.invite.body);
+    setRConfirmSubject(t.reminder_confirm_subject || REMINDER_DEFAULTS.confirm.subject);
+    setRConfirmBody(t.reminder_confirm_body || REMINDER_DEFAULTS.confirm.body);
+    setRCompletionSubject(t.reminder_completion_subject || REMINDER_DEFAULTS.completion.subject);
+    setRCompletionBody(t.reminder_completion_body || REMINDER_DEFAULTS.completion.body);
+    setRNoBookingSubject(t.reminder_no_booking_subject || REMINDER_DEFAULTS.no_booking.subject);
+    setRNoBookingBody(t.reminder_no_booking_body || REMINDER_DEFAULTS.no_booking.body);
   };
 
   useEffect(() => {
@@ -344,6 +362,14 @@ function AdminEmailTemplatesPage() {
         email_signature: signature,
         sender_name: senderName || null,
         reply_to_email: replyTo || null,
+        reminder_invite_subject: rInviteSubject,
+        reminder_invite_body: rInviteBody,
+        reminder_confirm_subject: rConfirmSubject,
+        reminder_confirm_body: rConfirmBody,
+        reminder_completion_subject: rCompletionSubject,
+        reminder_completion_body: rCompletionBody,
+        reminder_no_booking_subject: rNoBookingSubject,
+        reminder_no_booking_body: rNoBookingBody,
       } as any)
       .eq("id", selectedTenantId);
     setSaving(false);
