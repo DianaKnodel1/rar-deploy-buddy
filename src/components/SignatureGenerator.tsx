@@ -36,6 +36,13 @@ interface Props {
   onSaved?: (url: string | null) => void;
 }
 
+function extractSignatureStoragePath(value: string | null | undefined): string | null {
+  if (!value) return null;
+  if (!/^https?:\/\//i.test(value)) return value.replace(/^signatures\//, "");
+  const match = value.match(/\/storage\/v1\/object\/(?:public|sign)\/signatures\/([^?]+)/);
+  return match?.[1] ? decodeURIComponent(match[1]) : null;
+}
+
 export function SignatureGenerator({ tenantId, currentUrl, onSaved }: Props) {
   const { toast } = useToast();
   const [name, setName] = useState("");
@@ -52,11 +59,12 @@ export function SignatureGenerator({ tenantId, currentUrl, onSaved }: Props) {
       setPreviewUrl(null);
       return;
     }
-    if (/^https?:\/\//i.test(currentUrl)) {
+    const storagePath = extractSignatureStoragePath(currentUrl);
+    if (!storagePath) {
       setPreviewUrl(currentUrl);
       return;
     }
-    supabase.storage.from("signatures").createSignedUrl(currentUrl, 60 * 10)
+    supabase.storage.from("signatures").createSignedUrl(storagePath, 60 * 10)
       .then(({ data }) => {
         if (!cancelled) setPreviewUrl(data?.signedUrl ?? null);
       });
@@ -149,7 +157,7 @@ export function SignatureGenerator({ tenantId, currentUrl, onSaved }: Props) {
               <p className="text-[10px] text-muted-foreground">Wird auf Verträgen verwendet</p>
             </div>
           </div>
-          <Button variant="ghost" size="sm" onClick={handleRemove} disabled={saving} className="text-destructive">
+          <Button type="button" variant="ghost" size="sm" onClick={handleRemove} disabled={saving} className="text-destructive">
             <Trash2 className="h-4 w-4" />
           </Button>
         </Card>
@@ -196,7 +204,7 @@ export function SignatureGenerator({ tenantId, currentUrl, onSaved }: Props) {
           </div>
         )}
 
-        <Button onClick={handleSave} disabled={saving || !name.trim()} className="gap-2">
+        <Button type="button" onClick={handleSave} disabled={saving || !name.trim()} className="gap-2">
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
           Unterschrift speichern
         </Button>
