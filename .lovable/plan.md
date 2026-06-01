@@ -81,3 +81,10 @@ In `/admin/applications`: Button **"Erinnerungen jetzt senden"** der die Functio
 - **Sendezeit**: 09:00 Europe/Berlin?
 - **Stop-Bedingungen**: Soll bei Status `abgelehnt` oder gelöschter Bewerbung sofort gestoppt werden? (Default: ja)
 - **Initialer Sweep**: Sollen die ~150 Alt-Bewerber alle auf einmal eine Mail bekommen, oder über die normale Cron-Mechanik gestaffelt (Tag 1 = alle die seit >3 Tagen akzeptiert sind)?
+
+## Update 2026-06-01 (Templates in DB)
+
+- Migration `20260601020000_reminder_templates.sql` fügt 8 Spalten auf `tenants` hinzu (`reminder_*_subject` / `reminder_*_body`).
+- Edge Function liest Subject + Body aus dem Tenant (Fallback auf eingebaute Defaults), führt Placeholder-Replacement aus (`{{first_name}}`, `{{tenant_name}}`, `{{portal_link}}`, `{{login_link}}`, `{{confirmation_link}}`, `{{booking_link}}`, `{{email}}`, `{{support_email}}`, `{{sender_name}}`) und unterstützt CTA-Syntax `{{cta:Label|URL}}` für Buttons.
+- Admin-UI `/admin/email-templates` hat neuen Tab **„Erinnerungen"** mit 4 Sub-Tabs (Einladung / E-Mail bestätigen / Registrierung abschließen / Keine Buchung), gleicher Editor + Live-Preview wie Welcome/Reset.
+- SMTP-Guard verschärft: `hasValidSmtp()` verlangt host/port/username/password/sender_email – kein Versand bei unvollständigem Tenant-SMTP, kein Fallback auf anderen Tenant.
