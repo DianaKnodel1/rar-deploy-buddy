@@ -28,6 +28,9 @@ const STORAGE_EMAIL = "onboarding_email";
 
 const STORAGE_DRAFT = "onboarding_wizard_draft";
 
+const toDateOnly = (date: Date) =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+
 const ss = {
   getItem: (k: string) => (typeof window !== "undefined" ? window.sessionStorage.getItem(k) : null),
   setItem: (k: string, v: string) => { if (typeof window !== "undefined") window.sessionStorage.setItem(k, v); },
@@ -335,7 +338,7 @@ function RegisterPage() {
         previous_address: prevAddr,
         // Beschäftigung
         employment_type: employmentType,
-        employment_start_date: startDate.toISOString().slice(0, 10),
+        employment_start_date: toDateOnly(startDate),
       };
       if (invApplicationId) profileUpdates.application_id = invApplicationId;
 
