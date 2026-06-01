@@ -74,11 +74,19 @@ function replacePlaceholders(text: string, tenant: TenantEmail): string {
     tenant_name: tenant.name,
     support_email: tenant.company_email || tenant.sender_email || "support@example.com",
     reset_link: `https://${tenant.domain}/reset-password?token=demo123`,
+    login_link: `https://${tenant.domain}/login`,
+    confirmation_link: `https://${tenant.domain}/auth/confirmed?token_hash=demo123`,
+    booking_link: `https://${tenant.domain}/appointments`,
   };
   let result = text;
   for (const [key, value] of Object.entries(map)) {
     result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, "g"), value || "");
   }
+  // CTA-Syntax: {{cta:Label|URL}} -> sichtbarer Button (in Vorschau)
+  result = result.replace(/\{\{cta:([^|}]+)\|([^}]+)\}\}/g, (_m, label, href) => {
+    const color = tenant.primary_color || "#0f172a";
+    return `<table cellpadding="0" cellspacing="0" style="margin:16px 0"><tr><td style="background:${color};border-radius:8px"><a href="${String(href).trim()}" style="display:inline-block;padding:14px 28px;color:#fff;text-decoration:none;font-weight:600;font-size:15px">${String(label).trim()}</a></td></tr></table>`;
+  });
   return result;
 }
 
