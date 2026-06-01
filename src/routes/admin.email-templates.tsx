@@ -296,14 +296,15 @@ function AdminEmailTemplatesPage() {
 
   const loadTenants = async () => {
     setLoading(true);
-    const { data } = await supabase
+    const { data } = await (supabase as any)
       .from("tenants")
       .select("id, name, domain, primary_color, logo_url, sender_email, sender_name, reply_to_email, smtp_host, smtp_port, smtp_username, smtp_password, welcome_email_subject, welcome_email_body, reset_email_subject, reset_email_body, email_signature, team_leader_name, reminder_invite_subject, reminder_invite_body, reminder_confirm_subject, reminder_confirm_body, reminder_completion_subject, reminder_completion_body, reminder_no_booking_subject, reminder_no_booking_body")
       .order("name");
-    setTenants((data as any as TenantEmail[]) ?? []);
-    if (data && data.length > 0 && !selectedTenantId) {
-      setSelectedTenantId(data[0].id);
-      loadTenantData(data[0] as any);
+    const rows = (data as TenantEmail[] | null) ?? [];
+    setTenants(rows);
+    if (rows.length > 0 && !selectedTenantId) {
+      setSelectedTenantId(rows[0].id);
+      loadTenantData(rows[0]);
     }
     setLoading(false);
   };
