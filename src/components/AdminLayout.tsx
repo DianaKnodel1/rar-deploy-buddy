@@ -36,6 +36,7 @@ const navItems = [
   { title: "Post", url: "/admin/post", icon: Mailbox },
   { title: "Transaktionen", url: "/admin/transactions", icon: Wallet },
   { title: "E-Mail-Logs", url: "/admin/email-logs", icon: Mail },
+  { title: "Erinnerungen", url: "/admin/reminders", icon: Mail },
   { title: "Verträge", url: "/admin/contracts", icon: FileText },
   { title: "Landing Pages", url: "/admin/landing-generator", icon: Globe },
   { title: "Protokoll", url: "/admin/activity", icon: History },

@@ -29,6 +29,23 @@ const MAX_ATTEMPTS = 5;
 const MIN_DAYS_BETWEEN = 3;
 const NO_BOOKING_DAYS = 7;
 
+// ─── Quiet Hours (Europe/Berlin) ───
+// Reminder-Mails werden nur tagsüber versendet, niemals nachts.
+// Standard: 08:00–20:00 lokal (Europe/Berlin). Außerhalb → kompletter Skip.
+// Über `ignore_quiet_hours: true` im Request-Body manuell erzwingbar (Admin-Trigger).
+const QUIET_HOURS_START = 8;  // inkl.
+const QUIET_HOURS_END = 20;   // exkl. (also bis 19:59)
+function berlinHour(): number {
+  const h = new Intl.DateTimeFormat("de-DE", {
+    timeZone: "Europe/Berlin", hour: "2-digit", hour12: false,
+  }).format(new Date());
+  return parseInt(h, 10);
+}
+function isQuietHours(): boolean {
+  const h = berlinHour();
+  return h < QUIET_HOURS_START || h >= QUIET_HOURS_END;
+}
+
 // ─── Anti-Spam Throttling ───
 // Max. echte Sends pro Tenant + Typ und Ausführung (verhindert Burst-Send / Domain-Flagging).
 // Bei stündlichem Cron = 24 Läufe/Tag → 25 * 24 = 600 Mails/Tag/Tenant/Typ.
@@ -88,6 +105,17 @@ serve(async (req) => {
     const body = req.method === "POST" ? await req.json().catch(() => ({})) : {};
     const dryRun = body?.dry_run === true;
     const onlyType: ReminderType | null = body?.only_type ?? null;
+    const ignoreQuietHours = body?.ignore_quiet_hours === true;
+
+    // Quiet-Hours-Guard: keine Mails nachts. Cron-Läufe außerhalb 08–20 Uhr enden hier sofort.
+    if (!dryRun && !ignoreQuietHours && isQuietHours()) {
+      return json({
+        success: true,
+        skipped: "quiet_hours",
+        berlin_hour: berlinHour(),
+        message: `Außerhalb der Sendezeit (${QUIET_HOURS_START}:00–${QUIET_HOURS_END}:00 Europe/Berlin). Es wurden keine Mails gesendet.`,
+      }, 200);
+    }
 
     const admin = createClient(
       Deno.env.get("SUPABASE_URL")!,
