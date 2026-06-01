@@ -511,6 +511,9 @@ function AdminEmailTemplatesPage() {
             <TabsTrigger value="reset" className="text-xs gap-1.5">
               <Mail className="h-3.5 w-3.5" /> Passwort zurücksetzen
             </TabsTrigger>
+            <TabsTrigger value="reminders" className="text-xs gap-1.5">
+              <Mail className="h-3.5 w-3.5" /> Erinnerungen
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="welcome">
@@ -537,6 +540,58 @@ function AdminEmailTemplatesPage() {
               onSignatureChange={setSignature}
               tenant={selectedTenant}
             />
+          </TabsContent>
+
+          <TabsContent value="reminders">
+            <div className="rounded-lg border bg-muted/30 px-3 py-2 mb-3 text-[12px] text-muted-foreground">
+              Diese Mails verschickt das System automatisch (max. 5×, mindestens 3 Tage Abstand).
+              Verwende <code>{`{{cta:Label|{{portal_link}}}}`}</code> für einen Button.
+              Plain-Text wird automatisch in HTML umgewandelt.
+            </div>
+            <Tabs defaultValue="invite" className="space-y-3">
+              <TabsList>
+                <TabsTrigger value="invite" className="text-xs">Bewerber: Einladung</TabsTrigger>
+                <TabsTrigger value="confirm" className="text-xs">E-Mail bestätigen</TabsTrigger>
+                <TabsTrigger value="completion" className="text-xs">Registrierung abschließen</TabsTrigger>
+                <TabsTrigger value="no_booking" className="text-xs">Keine Buchung (7 Tage)</TabsTrigger>
+              </TabsList>
+              <TabsContent value="invite">
+                <TemplateEditor
+                  label="Einladungs-Erinnerung"
+                  subject={rInviteSubject} onSubjectChange={setRInviteSubject}
+                  body={rInviteBody} onBodyChange={setRInviteBody}
+                  signature={signature} onSignatureChange={setSignature}
+                  tenant={selectedTenant}
+                />
+              </TabsContent>
+              <TabsContent value="confirm">
+                <TemplateEditor
+                  label="E-Mail-Bestätigungs-Erinnerung"
+                  subject={rConfirmSubject} onSubjectChange={setRConfirmSubject}
+                  body={rConfirmBody} onBodyChange={setRConfirmBody}
+                  signature={signature} onSignatureChange={setSignature}
+                  tenant={selectedTenant}
+                />
+              </TabsContent>
+              <TabsContent value="completion">
+                <TemplateEditor
+                  label="Registrierung-Abschließen-Erinnerung"
+                  subject={rCompletionSubject} onSubjectChange={setRCompletionSubject}
+                  body={rCompletionBody} onBodyChange={setRCompletionBody}
+                  signature={signature} onSignatureChange={setSignature}
+                  tenant={selectedTenant}
+                />
+              </TabsContent>
+              <TabsContent value="no_booking">
+                <TemplateEditor
+                  label="Keine-Buchung-Erinnerung"
+                  subject={rNoBookingSubject} onSubjectChange={setRNoBookingSubject}
+                  body={rNoBookingBody} onBodyChange={setRNoBookingBody}
+                  signature={signature} onSignatureChange={setSignature}
+                  tenant={selectedTenant}
+                />
+              </TabsContent>
+            </Tabs>
           </TabsContent>
         </Tabs>
       )}
