@@ -321,8 +321,7 @@ function ContractPage() {
               {contract.generated_content}
             </div>
 
-            {(employeeSigUrl || companySigUrl) && (
-              <div className="grid grid-cols-2 gap-4 mt-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
                 <div>
                   <p className="text-xs text-muted-foreground mb-2">Deine Unterschrift</p>
                   {employeeSigUrl && !empSigError ? (
@@ -333,8 +332,8 @@ function ContractPage() {
                       onError={() => setEmpSigError(true)}
                     />
                   ) : (
-                    <div className="h-16 border rounded-lg bg-card flex items-center justify-center px-3">
-                      <span className="font-serif italic text-base text-foreground truncate">{contract.signed_name}</span>
+                    <div className="h-16 border rounded-lg bg-card flex items-center justify-center px-3 text-center">
+                      <span className="font-serif italic text-base text-foreground truncate">{contract.signed_name || "Digital unterschrieben"}</span>
                     </div>
                   )}
                   <p className="text-[10px] text-muted-foreground mt-1">{contract.signed_name}</p>
@@ -355,7 +354,6 @@ function ContractPage() {
                   )}
                 </div>
               </div>
-            )}
 
             <Button className="w-full gap-2" onClick={handleDownloadPdf} disabled={downloading}>
               {downloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
