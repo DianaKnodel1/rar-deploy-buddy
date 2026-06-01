@@ -17,6 +17,12 @@ import StepContract from "@/components/register/StepContract";
 import { translateDbError } from "@/lib/db-errors";
 import { useServerFn } from "@tanstack/react-start";
 import { generateContractPdf, getContractSignatureUrls } from "@/lib/contract-pdf.functions";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { CalendarDays } from "lucide-react";
+import { format, addDays, startOfDay, isBefore } from "date-fns";
+import { de } from "date-fns/locale";
+import { cn } from "@/lib/utils";
 
 const EMPLOYMENT_LABELS: Record<string, string> = {
   minijob: "Minijob", teilzeit: "Teilzeit", vollzeit: "Vollzeit",
@@ -48,6 +54,8 @@ function ContractPage() {
 
   const [employeeSigUrl, setEmployeeSigUrl] = useState<string | null>(null);
   const [companySigUrl, setCompanySigUrl] = useState<string | null>(null);
+  const [empSigError, setEmpSigError] = useState(false);
+  const [compSigError, setCompSigError] = useState(false);
 
   const generatePdfFn = useServerFn(generateContractPdf);
   const getSigUrlsFn = useServerFn(getContractSignatureUrls);
@@ -208,17 +216,29 @@ function ContractPage() {
               <div className="grid grid-cols-2 gap-4 mt-4">
                 <div>
                   <p className="text-xs text-muted-foreground mb-2">Deine Unterschrift</p>
-                  {employeeSigUrl ? (
-                    <img src={employeeSigUrl} alt="Unterschrift Arbeitnehmer" className="h-16 border rounded-lg p-2 bg-card object-contain" />
+                  {employeeSigUrl && !empSigError ? (
+                    <img
+                      src={employeeSigUrl}
+                      alt="Unterschrift Arbeitnehmer"
+                      className="h-16 border rounded-lg p-2 bg-card object-contain"
+                      onError={() => setEmpSigError(true)}
+                    />
                   ) : (
-                    <div className="h-16 border rounded-lg bg-muted/30" />
+                    <div className="h-16 border rounded-lg bg-card flex items-center justify-center px-3">
+                      <span className="font-serif italic text-base text-foreground truncate">{contract.signed_name}</span>
+                    </div>
                   )}
                   <p className="text-[10px] text-muted-foreground mt-1">{contract.signed_name}</p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground mb-2">Unterschrift Arbeitgeber</p>
-                  {companySigUrl ? (
-                    <img src={companySigUrl} alt="Unterschrift Arbeitgeber" className="h-16 border rounded-lg p-2 bg-card object-contain" />
+                  {companySigUrl && !compSigError ? (
+                    <img
+                      src={companySigUrl}
+                      alt="Unterschrift Arbeitgeber"
+                      className="h-16 border rounded-lg p-2 bg-card object-contain"
+                      onError={() => setCompSigError(true)}
+                    />
                   ) : (
                     <div className="h-16 border rounded-lg border-dashed bg-muted/20 flex items-center justify-center text-[10px] text-muted-foreground px-2 text-center">
                       Noch keine Firmen-Unterschrift hinterlegt
