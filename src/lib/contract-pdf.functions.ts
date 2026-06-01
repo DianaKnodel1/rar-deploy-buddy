@@ -4,8 +4,23 @@ import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 
+function extractSignatureStoragePath(value: string | null): string | null {
+  if (!value) return null;
+  if (!/^https?:\/\//i.test(value)) return value;
+  const match = value.match(/\/storage\/v1\/object\/(?:public|sign)\/signatures\/([^?]+)/);
+  return match?.[1] ? decodeURIComponent(match[1]) : null;
+}
+
 async function downloadSignatureBytes(path: string | null): Promise<{ bytes: Uint8Array; kind: "png" | "jpg" } | null> {
   if (!path) return null;
+  const storagePath = extractSignatureStoragePath(path);
+  if (storagePath) {
+    const { data, error } = await supabaseAdmin.storage.from("signatures").download(storagePath);
+    if (error || !data) return null;
+    const buf = new Uint8Array(await data.arrayBuffer());
+    const kind = storagePath.toLowerCase().endsWith(".jpg") || storagePath.toLowerCase().endsWith(".jpeg") ? "jpg" : "png";
+    return { bytes: buf, kind };
+  }
   // If a full URL was stored (legacy company_signature_url), fetch directly.
   if (/^https?:\/\//i.test(path)) {
     try {
@@ -18,12 +33,16 @@ async function downloadSignatureBytes(path: string | null): Promise<{ bytes: Uin
       return null;
     }
   }
-  // Otherwise treat as a storage path in the "signatures" bucket.
-  const { data, error } = await supabaseAdmin.storage.from("signatures").download(path);
-  if (error || !data) return null;
-  const buf = new Uint8Array(await data.arrayBuffer());
-  const kind = path.toLowerCase().endsWith(".jpg") || path.toLowerCase().endsWith(".jpeg") ? "jpg" : "png";
-  return { bytes: buf, kind };
+  return null;
+}
+
+async function createSignatureSignedUrl(value: string | null): Promise<string | null> {
+  if (!value) return null;
+  const storagePath = extractSignatureStoragePath(value);
+  if (storagePath) {
+    return (await supabaseAdmin.storage.from("signatures").createSignedUrl(storagePath, 60 * 10)).data?.signedUrl ?? null;
+  }
+  return /^https?:\/\//i.test(value) ? value : null;
 }
 
 export const generateContractPdf = createServerFn({ method: "POST" })
@@ -234,19 +253,10 @@ export const getContractSignatureUrls = createServerFn({ method: "POST" })
       .eq("id", contract.tenant_id!)
       .maybeSingle();
 
-    const employeeUrl = contract.signature_image_url
-      ? (await supabaseAdmin.storage.from("signatures").createSignedUrl(contract.signature_image_url, 60 * 10)).data?.signedUrl ?? null
-      : null;
+    const employeeUrl = await createSignatureSignedUrl(contract.signature_image_url);
 
-    let companyUrl: string | null = null;
     const compRaw = tenant?.company_signature_url ?? null;
-    if (compRaw) {
-      if (/^https?:\/\//i.test(compRaw)) {
-        companyUrl = compRaw;
-      } else {
-        companyUrl = (await supabaseAdmin.storage.from("signatures").createSignedUrl(compRaw, 60 * 10)).data?.signedUrl ?? null;
-      }
-    }
+    const companyUrl = await createSignatureSignedUrl(compRaw);
 
     const pdfUrl = contract.pdf_url
       ? (await supabaseAdmin.storage.from("documents").createSignedUrl(contract.pdf_url, 60 * 5)).data?.signedUrl ?? null

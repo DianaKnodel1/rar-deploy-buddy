@@ -28,6 +28,14 @@ const EMPLOYMENT_LABELS: Record<string, string> = {
   minijob: "Minijob", teilzeit: "Teilzeit", vollzeit: "Vollzeit",
 };
 
+const toDateOnly = (date: Date) =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+
+const dateOnlyToLocalDate = (value: string) => {
+  const [year, month, day] = value.split("-").map(Number);
+  return new Date(year, (month ?? 1) - 1, day ?? 1);
+};
+
 function StartDateStep({ userId, onSaved, onBack }: { userId: string; onSaved: (d: string) => void; onBack: () => void }) {
   const { toast } = useToast();
   const [date, setDate] = useState<Date | undefined>(undefined);
@@ -37,7 +45,7 @@ function StartDateStep({ userId, onSaved, onBack }: { userId: string; onSaved: (
   const handleSave = async () => {
     if (!date) return;
     setSaving(true);
-    const iso = date.toISOString().slice(0, 10);
+    const iso = toDateOnly(date);
     const { error } = await supabase.from("profiles").update({ employment_start_date: iso }).eq("user_id", userId);
     setSaving(false);
     if (error) {
@@ -409,7 +417,7 @@ function ContractPage() {
               zipCode={profile?.zip_code ?? ""}
               city={profile?.city ?? ""}
               employmentType={profile?.employment_type ?? "minijob"}
-              startDate={profile?.employment_start_date ? new Date(profile.employment_start_date) : undefined}
+              startDate={profile?.employment_start_date ? dateOnlyToLocalDate(profile.employment_start_date) : undefined}
               agreed={agreed}
               setAgreed={setAgreed}
               signatureName={signatureName}
