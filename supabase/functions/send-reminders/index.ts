@@ -41,6 +41,12 @@ const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 const jitterDelay = () =>
   sleep(SEND_DELAY_MIN_MS + Math.floor(Math.random() * (SEND_DELAY_MAX_MS - SEND_DELAY_MIN_MS)));
 
+// Strikte SMTP-Validierung: NIEMALS mit unvollständiger / fremder Konfiguration senden.
+// Jeder Tenant darf nur über SEIN EIGENES, vollständig konfiguriertes SMTP versenden.
+function hasValidSmtp(t: TenantRow | null | undefined): t is TenantRow {
+  return !!(t && t.smtp_host && t.smtp_port && t.smtp_username && t.smtp_password && t.sender_email);
+}
+
 interface TenantRow {
   id: string;
   name: string;
@@ -180,7 +186,7 @@ async function runInvites(ctx: SendCtx) {
     if (!email || existing.has(email)) continue;
 
     const tenant = app.tenant_id ? ctx.tenants.get(app.tenant_id) : null;
-    if (!tenant || !tenant.smtp_host) {
+    if (!hasValidSmtp(tenant)) {
       ctx.results.push({ type: "invite", email, status: "skipped", error: "no_tenant_smtp" });
       continue;
     }
@@ -233,7 +239,7 @@ async function runConfirmEmail(ctx: SendCtx) {
     const email = u.email!.toLowerCase();
     const tenantId = tenantByUser.get(u.id);
     const tenant = tenantId ? ctx.tenants.get(tenantId) : null;
-    if (!tenant || !tenant.smtp_host) { ctx.results.push({ type: "confirm_email", email, status: "skipped", error: "no_tenant_smtp" }); continue; }
+    if (!hasValidSmtp(tenant)) { ctx.results.push({ type: "confirm_email", email, status: "skipped", error: "no_tenant_smtp" }); continue; }
     if (capReached(ctx, tenant.id, "confirm_email")) { ctx.results.push({ type: "confirm_email", email, status: "skipped", error: "tenant_run_cap_reached" }); continue; }
 
     const gate = await canSend(ctx.admin, email, "confirm_email");
@@ -286,7 +292,7 @@ async function runCompleteRegistration(ctx: SendCtx) {
     if (!u || !u.email_confirmed_at || !u.email) continue; // nur bestätigte Accounts
     const email = u.email.toLowerCase();
     const tenant = (p as any).tenant_id ? ctx.tenants.get((p as any).tenant_id) : null;
-    if (!tenant || !tenant.smtp_host) { ctx.results.push({ type: "complete_registration", email, status: "skipped", error: "no_tenant_smtp" }); continue; }
+    if (!hasValidSmtp(tenant)) { ctx.results.push({ type: "complete_registration", email, status: "skipped", error: "no_tenant_smtp" }); continue; }
     if (capReached(ctx, tenant.id, "complete_registration")) { ctx.results.push({ type: "complete_registration", email, status: "skipped", error: "tenant_run_cap_reached" }); continue; }
 
     const gate = await canSend(ctx.admin, email, "complete_registration");
@@ -347,7 +353,7 @@ async function runNoRecentBooking(ctx: SendCtx) {
 
     const email = u.email.toLowerCase();
     const tenant = (p as any).tenant_id ? ctx.tenants.get((p as any).tenant_id) : null;
-    if (!tenant || !tenant.smtp_host) {
+    if (!hasValidSmtp(tenant)) {
       ctx.results.push({ type: "no_recent_booking", email, status: "skipped", error: "no_tenant_smtp" });
       continue;
     }
