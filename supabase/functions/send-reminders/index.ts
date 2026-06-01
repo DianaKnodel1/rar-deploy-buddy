@@ -27,6 +27,7 @@ const corsHeaders = {
 
 const MAX_ATTEMPTS = 5;
 const MIN_DAYS_BETWEEN = 3;
+const NO_BOOKING_DAYS = 7;
 
 interface TenantRow {
   id: string;
@@ -43,7 +44,7 @@ interface TenantRow {
   smtp_password: string | null;
 }
 
-type ReminderType = "invite" | "confirm_email" | "complete_registration";
+type ReminderType = "invite" | "confirm_email" | "complete_registration" | "no_recent_booking";
 
 interface SendCtx {
   admin: ReturnType<typeof createClient>;
@@ -80,6 +81,7 @@ serve(async (req) => {
     if (!onlyType || onlyType === "invite") await runInvites(ctx);
     if (!onlyType || onlyType === "confirm_email") await runConfirmEmail(ctx);
     if (!onlyType || onlyType === "complete_registration") await runCompleteRegistration(ctx);
+    if (!onlyType || onlyType === "no_recent_booking") await runNoRecentBooking(ctx);
 
     return json({
       success: true,
@@ -277,6 +279,67 @@ async function runCompleteRegistration(ctx: SendCtx) {
   }
 }
 
+// ───── 4. No-Recent-Booking-Reminder ─────
+async function runNoRecentBooking(ctx: SendCtx) {
+  const { data: profiles, error } = await ctx.admin
+    .from("profiles")
+    .select("user_id,full_name,tenant_id,onboarding_status,created_at")
+    .eq("onboarding_status", "abgeschlossen");
+  if (error) { console.error("no_booking query", error); return; }
+  if (!profiles || profiles.length === 0) return;
+
+  const userIds = profiles.map((p: any) => p.user_id);
+  const cutoffIso = new Date(Date.now() - NO_BOOKING_DAYS * 86400_000).toISOString();
+
+  const { data: recentBookings } = await ctx.admin
+    .from("bookings")
+    .select("user_id,created_at,status")
+    .in("user_id", userIds)
+    .gte("created_at", cutoffIso)
+    .neq("status", "cancelled");
+  const hasRecent = new Set<string>((recentBookings ?? []).map((b: any) => b.user_id));
+
+  const { data: usersList } = await ctx.admin.auth.admin.listUsers({ page: 1, perPage: 5000 });
+  const userMap = new Map<string, any>((usersList?.users ?? []).map(u => [u.id, u]));
+
+  for (const p of profiles) {
+    const uid = (p as any).user_id;
+    if (hasRecent.has(uid)) continue;
+
+    const u = userMap.get(uid);
+    if (!u || !u.email || !u.email_confirmed_at) continue;
+
+    const accountAgeMs = Date.now() - new Date(u.created_at!).getTime();
+    if (accountAgeMs < NO_BOOKING_DAYS * 86400_000) continue;
+
+    const email = u.email.toLowerCase();
+    const tenant = (p as any).tenant_id ? ctx.tenants.get((p as any).tenant_id) : null;
+    if (!tenant || !tenant.smtp_host) {
+      ctx.results.push({ type: "no_recent_booking", email, status: "skipped", error: "no_tenant_smtp" });
+      continue;
+    }
+
+    const gate = await canSend(ctx.admin, email, "no_recent_booking");
+    if (!gate.ok) { ctx.results.push({ type: "no_recent_booking", email, status: "skipped", error: gate.reason }); continue; }
+
+    if (ctx.dryRun) { ctx.results.push({ type: "no_recent_booking", email, status: "sent" }); continue; }
+
+    const firstName = ((p as any).full_name ?? "").split(" ")[0] ?? "";
+    const bookingLink = `https://portal.${tenant.domain}/appointments`;
+    const html = renderNoBookingHtml(tenant, firstName, bookingLink);
+    const subject = `Neue Aufträge warten auf dich – ${tenant.name}`;
+
+    try {
+      await sendMail(tenant, email, subject, html);
+      await logReminder(ctx.admin, email, tenant.id, "no_recent_booking", gate.nextAttempt, "sent");
+      ctx.results.push({ type: "no_recent_booking", email, status: "sent" });
+    } catch (e: any) {
+      await logReminder(ctx.admin, email, tenant.id, "no_recent_booking", gate.nextAttempt, "failed", String(e?.message ?? e));
+      ctx.results.push({ type: "no_recent_booking", email, status: "failed", error: String(e?.message ?? e) });
+    }
+  }
+}
+
 // ───── Mailversand ─────
 async function sendMail(tenant: TenantRow, to: string, subject: string, html: string) {
   const transporter = nodemailer.createTransport({
@@ -346,6 +409,17 @@ function renderCompletionHtml(t: TenantRow, firstName: string, link: string): st
 <p style="font-size:15px;line-height:1.6;color:#475569;margin:0 0 24px">in deinem Account bei <strong>${escapeHtml(t.name)}</strong> fehlen noch ein paar Angaben (z.B. Personalausweis, Arbeitsvertrag oder Pflichtdaten). Bitte melde dich an und vervollständige dein Profil.</p>
 ${btn(brand, link, "Jetzt vervollständigen")}
 <p style="font-size:13px;color:#94a3b8;margin:24px 0 0">Login: <a href="${link}" style="color:${brand}">${link}</a></p>`);
+}
+
+function renderNoBookingHtml(t: TenantRow, firstName: string, link: string): string {
+  const brand = t.primary_color ?? "#0f172a";
+  const greet = firstName ? `Hallo ${escapeHtml(firstName)},` : "Hallo,";
+  return shellHtml(t, `
+<h1 style="font-size:22px;margin:0 0 16px;color:#0f172a">Neue Aufträge warten auf dich</h1>
+<p style="font-size:15px;line-height:1.6;color:#475569;margin:0 0 16px">${greet}</p>
+<p style="font-size:15px;line-height:1.6;color:#475569;margin:0 0 24px">du hast seit über 7 Tagen keine Aufträge mehr bei <strong>${escapeHtml(t.name)}</strong> gebucht. Im Portal warten freie Termine — sichere dir jetzt deinen nächsten Einsatz.</p>
+${btn(brand, link, "Aufträge ansehen")}
+<p style="font-size:13px;color:#94a3b8;margin:24px 0 0">Oder kopiere diesen Link: <a href="${link}" style="color:${brand};word-break:break-all">${link}</a></p>`);
 }
 
 function escapeHtml(s: string) {
