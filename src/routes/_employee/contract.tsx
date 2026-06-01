@@ -319,6 +319,15 @@ function ContractPage() {
       );
     }
 
+    // Inline-Auswahl des Startdatums, wenn noch nicht gesetzt
+    if (!profile?.employment_start_date) {
+      return <StartDateStep
+        userId={user!.id}
+        onSaved={(d) => setProfile({ ...profile, employment_start_date: d })}
+        onBack={() => navigate("/dashboard")}
+      />;
+    }
+
     return (
       <div className="p-6 lg:p-8 max-w-2xl mx-auto space-y-4">
         <div className="flex items-center gap-3">
