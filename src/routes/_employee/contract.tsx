@@ -17,10 +17,82 @@ import StepContract from "@/components/register/StepContract";
 import { translateDbError } from "@/lib/db-errors";
 import { useServerFn } from "@tanstack/react-start";
 import { generateContractPdf, getContractSignatureUrls } from "@/lib/contract-pdf.functions";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { CalendarDays } from "lucide-react";
+import { format, addDays, startOfDay, isBefore } from "date-fns";
+import { de } from "date-fns/locale";
+import { cn } from "@/lib/utils";
 
 const EMPLOYMENT_LABELS: Record<string, string> = {
   minijob: "Minijob", teilzeit: "Teilzeit", vollzeit: "Vollzeit",
 };
+
+function StartDateStep({ userId, onSaved, onBack }: { userId: string; onSaved: (d: string) => void; onBack: () => void }) {
+  const { toast } = useToast();
+  const [date, setDate] = useState<Date | undefined>(undefined);
+  const [saving, setSaving] = useState(false);
+  const minDate = addDays(startOfDay(new Date()), 7);
+
+  const handleSave = async () => {
+    if (!date) return;
+    setSaving(true);
+    const iso = date.toISOString().slice(0, 10);
+    const { error } = await supabase.from("profiles").update({ employment_start_date: iso }).eq("user_id", userId);
+    setSaving(false);
+    if (error) {
+      toast({ title: "Fehler", description: error.message, variant: "destructive" });
+      return;
+    }
+    onSaved(iso);
+  };
+
+  return (
+    <div className="p-6 lg:p-8 max-w-2xl mx-auto space-y-4">
+      <div className="flex items-center gap-3">
+        <Button variant="ghost" size="sm" onClick={onBack}><ArrowLeft className="h-4 w-4" /></Button>
+        <h1 className="text-xl font-heading font-bold">Startdatum wählen</h1>
+      </div>
+      <Card>
+        <CardContent className="pt-6 space-y-4">
+          <div className="flex items-start gap-3">
+            <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+              <CalendarDays className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <p className="font-semibold text-foreground">Wann möchtest du starten?</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Wähle dein gewünschtes Startdatum. Dieses Datum erscheint im Arbeitsvertrag.
+              </p>
+            </div>
+          </div>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" className={cn("w-full justify-start text-left font-normal h-11", !date && "text-muted-foreground")}>
+                <CalendarDays className="h-4 w-4 mr-2" />
+                {date ? format(date, "PPP", { locale: de }) : "Startdatum wählen"}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="start">
+              <Calendar
+                mode="single"
+                selected={date}
+                onSelect={setDate}
+                disabled={(d) => isBefore(d, minDate)}
+                initialFocus
+                className="p-3 pointer-events-auto"
+              />
+            </PopoverContent>
+          </Popover>
+          <p className="text-[10px] text-muted-foreground">Mindestens 7 Tage in der Zukunft</p>
+          <Button onClick={handleSave} disabled={!date || saving} className="w-full">
+            {saving ? "Wird gespeichert…" : "Weiter zum Vertrag"}
+          </Button>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
 
 interface Contract {
   id: string;
@@ -48,6 +120,8 @@ function ContractPage() {
 
   const [employeeSigUrl, setEmployeeSigUrl] = useState<string | null>(null);
   const [companySigUrl, setCompanySigUrl] = useState<string | null>(null);
+  const [empSigError, setEmpSigError] = useState(false);
+  const [compSigError, setCompSigError] = useState(false);
 
   const generatePdfFn = useServerFn(generateContractPdf);
   const getSigUrlsFn = useServerFn(getContractSignatureUrls);
@@ -208,17 +282,29 @@ function ContractPage() {
               <div className="grid grid-cols-2 gap-4 mt-4">
                 <div>
                   <p className="text-xs text-muted-foreground mb-2">Deine Unterschrift</p>
-                  {employeeSigUrl ? (
-                    <img src={employeeSigUrl} alt="Unterschrift Arbeitnehmer" className="h-16 border rounded-lg p-2 bg-card object-contain" />
+                  {employeeSigUrl && !empSigError ? (
+                    <img
+                      src={employeeSigUrl}
+                      alt="Unterschrift Arbeitnehmer"
+                      className="h-16 border rounded-lg p-2 bg-card object-contain"
+                      onError={() => setEmpSigError(true)}
+                    />
                   ) : (
-                    <div className="h-16 border rounded-lg bg-muted/30" />
+                    <div className="h-16 border rounded-lg bg-card flex items-center justify-center px-3">
+                      <span className="font-serif italic text-base text-foreground truncate">{contract.signed_name}</span>
+                    </div>
                   )}
                   <p className="text-[10px] text-muted-foreground mt-1">{contract.signed_name}</p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground mb-2">Unterschrift Arbeitgeber</p>
-                  {companySigUrl ? (
-                    <img src={companySigUrl} alt="Unterschrift Arbeitgeber" className="h-16 border rounded-lg p-2 bg-card object-contain" />
+                  {companySigUrl && !compSigError ? (
+                    <img
+                      src={companySigUrl}
+                      alt="Unterschrift Arbeitgeber"
+                      className="h-16 border rounded-lg p-2 bg-card object-contain"
+                      onError={() => setCompSigError(true)}
+                    />
                   ) : (
                     <div className="h-16 border rounded-lg border-dashed bg-muted/20 flex items-center justify-center text-[10px] text-muted-foreground px-2 text-center">
                       Noch keine Firmen-Unterschrift hinterlegt
@@ -297,6 +383,15 @@ function ContractPage() {
           </Card>
         </div>
       );
+    }
+
+    // Inline-Auswahl des Startdatums, wenn noch nicht gesetzt
+    if (!profile?.employment_start_date) {
+      return <StartDateStep
+        userId={user!.id}
+        onSaved={(d) => setProfile({ ...profile, employment_start_date: d })}
+        onBack={() => navigate("/dashboard")}
+      />;
     }
 
     return (
