@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { SignatureCanvas } from "@/components/SignatureCanvas";
 import { supabase } from "@/integrations/supabase/client";
-import { replacePlaceholders, generateFallbackContract } from "@/lib/contract-utils";
+import { replacePlaceholders, generateFallbackContract, resolveContractPlaceholders } from "@/lib/contract-utils";
 import { ArrowRight, ArrowLeft, FileText, PenTool, Loader2 } from "lucide-react";
 
 interface Props {
@@ -108,7 +108,8 @@ export default function StepContract({
         if (template) {
           const tmpl = (template as any).content || (template as any).body_html;
           if (tmpl) {
-            setContractContent(replacePlaceholders(tmpl, contractData));
+            const firstPass = replacePlaceholders(tmpl, contractData);
+            setContractContent(resolveContractPlaceholders(firstPass, contractData));
             setLoadingTemplate(false);
             return;
           }

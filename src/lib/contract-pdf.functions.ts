@@ -3,7 +3,7 @@ import { z } from "zod";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import { applyEmploymentStartDate, formatGermanDate } from "@/lib/contract-utils";
+import { applyEmploymentStartDate, formatGermanDate, resolveContractPlaceholders } from "@/lib/contract-utils";
 
 function extractSignatureStoragePath(value: string | null): string | null {
   if (!value) return null;
@@ -65,13 +65,13 @@ export const generateContractPdf = createServerFn({ method: "POST" })
     // Load tenant (admin – we just need company signature & meta)
     const { data: tenant } = await supabaseAdmin
       .from("tenants")
-      .select("name, company_ceo_name, company_signature_url")
+      .select("name, company_ceo_name, company_signature_url, company_address, company_city")
       .eq("id", contract.tenant_id!)
       .maybeSingle();
 
     const { data: profile } = await supabaseAdmin
       .from("profiles")
-      .select("employment_start_date")
+      .select("full_name, street, zip_code, city, employment_type, employment_start_date")
       .eq("user_id", contract.user_id)
       .maybeSingle();
 
@@ -140,10 +140,19 @@ export const generateContractPdf = createServerFn({ method: "POST" })
     };
 
     // Render contract content line by line, treating §-headings as bold.
-    const renderedContent = applyEmploymentStartDate(
-      contract.generated_content || "",
-      formatGermanDate(profile?.employment_start_date)
-    );
+    const [firstName, ...rest] = (profile?.full_name ?? "").split(" ");
+    const lastName = rest.join(" ");
+    const renderedContent = resolveContractPlaceholders(contract.generated_content || "", {
+      firstName,
+      lastName,
+      address: [profile?.street, profile?.zip_code && profile?.city ? `${profile.zip_code} ${profile.city}` : profile?.city].filter(Boolean).join(", "),
+      city: profile?.city ?? tenant?.company_city ?? "",
+      employmentType: profile?.employment_type ?? "",
+      companyName: tenant?.name ?? "",
+      companyCeoName: tenant?.company_ceo_name ?? "",
+      companyAddress: tenant?.company_address ?? "",
+      startDate: formatGermanDate(profile?.employment_start_date),
+    });
     const rawLines = renderedContent.split("\n");
     for (const rawLine of rawLines) {
       const line = rawLine.trimEnd();

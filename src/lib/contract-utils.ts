@@ -40,6 +40,74 @@ export function applyEmploymentStartDate(content: string, startDate?: string): s
   );
 }
 
+/**
+ * Resolve all placeholder spellings in a stored contract (both `{{key}}` and
+ * `((key))` styles, with common typos). Safe to run repeatedly on already-
+ * rendered contracts — placeholders that no longer exist are simply skipped.
+ */
+export function resolveContractPlaceholders(
+  content: string,
+  data: {
+    firstName?: string;
+    lastName?: string;
+    address?: string;
+    city?: string;
+    employmentType?: string;
+    companyName?: string;
+    companyCeoName?: string;
+    companyAddress?: string;
+    startDate?: string;
+  }
+): string {
+  if (!content) return content;
+  const employmentLabel =
+    data.employmentType === "minijob" ? "Minijob"
+    : data.employmentType === "teilzeit" ? "Teilzeit"
+    : data.employmentType === "vollzeit" ? "Vollzeit"
+    : data.employmentType ?? "";
+
+  const today = new Date().toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" });
+  const map: Record<string, string> = {
+    first_name: data.firstName ?? "",
+    firstname: data.firstName ?? "",
+    last_name: data.lastName ?? "",
+    lastname: data.lastName ?? "",
+    address: data.address ?? "",
+    adresse: data.address ?? "",
+    city: data.city ?? "",
+    stadt: data.city ?? "",
+    employment_type: employmentLabel,
+    beschaeftigungsart: employmentLabel,
+    company_name: data.companyName ?? "",
+    companyname: data.companyName ?? "",
+    firmenname: data.companyName ?? "",
+    company_ceo_name: data.companyCeoName ?? "",
+    companyceoname: data.companyCeoName ?? "",
+    geschaeftsfuehrer: data.companyCeoName ?? "",
+    company_address: data.companyAddress ?? "",
+    companyaddress: data.companyAddress ?? "",
+    companyadress: data.companyAddress ?? "",
+    company_adress: data.companyAddress ?? "",
+    firmenadresse: data.companyAddress ?? "",
+    start_date: data.startDate || today,
+    startdate: data.startDate || today,
+    startdatum: data.startDate || today,
+    employment_start_date: data.startDate || today,
+    date: today,
+    datum: today,
+  };
+
+  const norm = (k: string) => k.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  const replacer = (_m: string, key: string) => {
+    const v = map[norm(key)];
+    return v !== undefined ? v : _m;
+  };
+  let out = content.replace(/\{\{\s*([a-zA-Z0-9_ -]+?)\s*\}\}/g, replacer);
+  out = out.replace(/\(\(\s*([a-zA-Z0-9_ -]+?)\s*\)\)/g, replacer);
+  if (data.startDate) out = applyEmploymentStartDate(out, data.startDate);
+  return out;
+}
+
 export function replacePlaceholders(template: string, data: ContractData): string {
   const today = new Date().toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" });
   const startDate = data.startDate || today;
