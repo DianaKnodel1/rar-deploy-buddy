@@ -23,7 +23,7 @@ import { CalendarDays } from "lucide-react";
 import { format, addDays, startOfDay, isBefore } from "date-fns";
 import { de } from "date-fns/locale";
 import { cn } from "@/lib/utils";
-import { applyEmploymentStartDate, formatGermanDate } from "@/lib/contract-utils";
+import { applyEmploymentStartDate, formatGermanDate, resolveContractPlaceholders } from "@/lib/contract-utils";
 
 const EMPLOYMENT_LABELS: Record<string, string> = {
   minijob: "Minijob", teilzeit: "Teilzeit", vollzeit: "Vollzeit",
@@ -129,6 +129,7 @@ function ContractPage() {
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState(false);
   const [profile, setProfile] = useState<any>(null);
+  const [tenant, setTenant] = useState<any>(null);
 
   const [signing, setSigning] = useState(false);
   const [agreed, setAgreed] = useState(false);
@@ -152,6 +153,14 @@ function ContractPage() {
       if (contracts && contracts.length > 0) setContract(contracts[0] as unknown as Contract);
       setProfile(profileData);
       if (profileData?.full_name && !signatureName) setSignatureName(profileData.full_name);
+      if (profileData?.tenant_id) {
+        const { data: t } = await supabase
+          .from("tenants")
+          .select("name, company_ceo_name, company_address, company_city")
+          .eq("id", profileData.tenant_id)
+          .maybeSingle();
+        setTenant(t);
+      }
       setLoading(false);
     };
     loadData();
@@ -318,7 +327,17 @@ function ContractPage() {
             </div>
 
             <div className="rounded-xl border border-border bg-muted/30 p-5 max-h-96 overflow-y-auto text-xs text-foreground/80 leading-relaxed whitespace-pre-wrap font-mono">
-              {applyEmploymentStartDate(contract.generated_content, formatGermanDate(profile?.employment_start_date))}
+              {resolveContractPlaceholders(contract.generated_content, {
+                firstName: (profile?.full_name ?? "").split(" ")[0],
+                lastName: (profile?.full_name ?? "").split(" ").slice(1).join(" "),
+                address: [profile?.street, profile?.zip_code && profile?.city ? `${profile.zip_code} ${profile.city}` : profile?.city].filter(Boolean).join(", "),
+                city: profile?.city ?? "",
+                employmentType: profile?.employment_type ?? contract.employment_type,
+                companyName: tenant?.name ?? "",
+                companyCeoName: tenant?.company_ceo_name ?? "",
+                companyAddress: tenant?.company_address ?? "",
+                startDate: formatGermanDate(profile?.employment_start_date),
+              })}
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
