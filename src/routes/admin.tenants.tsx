@@ -25,6 +25,9 @@ import { SignatureGenerator } from "@/components/SignatureGenerator";
 function TenantForm({ tenant, onSaved }: { tenant?: Tenant; onSaved: () => void }) {
   const [name, setName] = useState(tenant?.name ?? "");
   const [domain, setDomain] = useState(tenant?.domain ?? "");
+  const [domainAliases, setDomainAliases] = useState<string>(
+    ((tenant as any)?.domain_aliases as string[] | undefined ?? []).join("\n")
+  );
   const [primaryColor, setPrimaryColor] = useState(tenant?.primary_color ?? "#000000");
   const [heroTitle, setHeroTitle] = useState(tenant?.hero_title ?? "Werde Teil unseres Teams");
   const [heroSubtitle, setHeroSubtitle] = useState(tenant?.hero_subtitle ?? "");
@@ -83,9 +86,17 @@ function TenantForm({ tenant, onSaved }: { tenant?: Tenant; onSaved: () => void 
       }
     }
     setLoading(true);
+    // Aliases: pro Zeile eine Domain, getrimmt, dedupliziert, ohne Primary
+    const aliasList = Array.from(new Set(
+      domainAliases
+        .split(/[\n,;]+/)
+        .map((s) => s.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, ""))
+        .filter((s) => s.length > 2 && s !== domain.trim().toLowerCase())
+    ));
     const payload = {
       name: name.trim(),
       domain: domain.trim().toLowerCase(),
+      domain_aliases: aliasList,
       primary_color: primaryColor,
       hero_title: heroTitle.trim(),
       hero_subtitle: heroSubtitle.trim(),
@@ -141,6 +152,21 @@ function TenantForm({ tenant, onSaved }: { tenant?: Tenant; onSaved: () => void 
             <Label className="text-xs">Domain *</Label>
             <Input value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="bcutheme.de" className="mt-1" />
           </div>
+        </div>
+        <div>
+          <Label className="text-xs">Fallback-Domains (Aliases)</Label>
+          <Textarea
+            value={domainAliases}
+            onChange={(e) => setDomainAliases(e.target.value)}
+            placeholder={"bcutheme.com\nbcu-portal.de"}
+            className="mt-1 font-mono text-xs"
+            rows={3}
+          />
+          <p className="text-[10px] text-muted-foreground mt-1">
+            Eine Domain pro Zeile. Wird die Primary-Domain (z.B. <code>.de</code>) blockiert oder vom Registrar geflaggt,
+            kannst du jederzeit eine Alias-Domain zur neuen Primary machen — alle neuen Login-Mails gehen dann darüber raus,
+            ohne Code-Deploy. Bewerber, die <code>portal.&lt;alias&gt;</code> aufrufen, landen ebenfalls im richtigen Tenant.
+          </p>
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>

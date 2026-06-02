@@ -23,6 +23,12 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { requestContractResign } from "@/lib/admin-contract.functions";
+import { generateAdminMagicLink } from "@/lib/admin-magic-link.functions";
+import { useServerFn } from "@tanstack/react-start";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Copy, LinkIcon } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
@@ -310,6 +316,9 @@ function AdminEmployeeDetailPage() {
               contractSigned={!!profile.contract_signed_at}
               kycVerified={kyc?.status === "verifiziert"}
             />
+          )}
+          {!isAdminProfile && (
+            <MagicLinkButton userId={userId!} fullName={profile.full_name} tenantId={(profile as any)?.tenant_id ?? null} />
           )}
           <PasswordResetButton email={email} />
           {!isAdminProfile && (
@@ -1214,5 +1223,119 @@ function ReminderButton({
     >
       <Send className="h-3.5 w-3.5" /> Erinnern
     </Button>
+  );
+}
+
+// ───── Magic-Login-Link Generator ─────
+// Notfall-Werkzeug: erzeugt einen einmaligen Login-Link, den der Admin
+// manuell weiterleiten kann (z.B. WhatsApp), falls die Portal-Domain blockiert
+// oder vom Registrar geflaggt ist.
+function MagicLinkButton({ userId, fullName, tenantId }: { userId: string; fullName: string; tenantId: string | null }) {
+  const { toast } = useToast();
+  const generate = useServerFn(generateAdminMagicLink);
+  const [open, setOpen] = useState(false);
+  const [domains, setDomains] = useState<string[]>([]);
+  const [selectedDomain, setSelectedDomain] = useState<string>("");
+  const [loading, setLoading] = useState(false);
+  const [link, setLink] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open || !tenantId) return;
+    (async () => {
+      const { data } = await supabase
+        .from("tenants")
+        .select("domain, domain_aliases")
+        .eq("id", tenantId)
+        .maybeSingle();
+      const d = (data as any)?.domain as string | null;
+      const aliases = ((data as any)?.domain_aliases as string[] | null) ?? [];
+      const list = [d, ...aliases].filter((x): x is string => !!x && x.length > 2);
+      setDomains(list);
+      setSelectedDomain((prev) => prev || list[0] || "");
+    })();
+  }, [open, tenantId]);
+
+  const handleGenerate = async () => {
+    if (!selectedDomain) return;
+    setLoading(true);
+    setLink(null);
+    try {
+      const res = await generate({ data: { user_id: userId, portal_domain: selectedDomain } });
+      setLink(res.action_link);
+    } catch (err: any) {
+      toast({ title: "Fehler", description: err?.message ?? "Unbekannt", variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const copy = async () => {
+    if (!link) return;
+    await navigator.clipboard.writeText(link);
+    toast({ title: "Kopiert", description: "Login-Link in der Zwischenablage" });
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) { setLink(null); } }}>
+      <DialogTrigger asChild>
+        <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5" title="Einmaligen Login-Link generieren">
+          <LinkIcon className="h-3.5 w-3.5" /> Login-Link
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Login-Link für {fullName}</DialogTitle>
+          <DialogDescription>
+            Erzeugt einen einmaligen Magic-Login-Link (gültig ~1h). Du kannst ihn manuell per
+            WhatsApp, SMS oder Telefon weitergeben — Notfall-Werkzeug, wenn die Portal-Domain
+            nicht erreichbar ist.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div>
+            <Label className="text-xs">Portal-Domain wählen</Label>
+            {domains.length === 0 ? (
+              <p className="text-xs text-muted-foreground mt-1">Lade Tenant-Domains…</p>
+            ) : (
+              <div className="grid gap-1.5 mt-1">
+                {domains.map((d) => (
+                  <label key={d} className="flex items-center gap-2 text-xs">
+                    <input
+                      type="radio"
+                      name="magic-domain"
+                      value={d}
+                      checked={selectedDomain === d}
+                      onChange={() => setSelectedDomain(d)}
+                    />
+                    <span className="font-mono">portal.{d}</span>
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+          {link && (
+            <div>
+              <Label className="text-xs">Login-Link</Label>
+              <div className="flex gap-1.5 mt-1">
+                <Input readOnly value={link} className="font-mono text-[10px]" onFocus={(e) => e.currentTarget.select()} />
+                <Button type="button" size="sm" variant="outline" onClick={copy} className="gap-1.5">
+                  <Copy className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+              <p className="text-[10px] text-muted-foreground mt-1">
+                Einmalig einlösbar. Nach dem Klick ist der Empfänger eingeloggt.
+              </p>
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => setOpen(false)}>Schließen</Button>
+          <Button onClick={handleGenerate} disabled={loading || !selectedDomain} className="gap-1.5">
+            {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <LinkIcon className="h-3.5 w-3.5" />}
+            {link ? "Neu generieren" : "Link erzeugen"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
