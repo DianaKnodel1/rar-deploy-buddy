@@ -1,90 +1,115 @@
-# Reminder-System
-
 ## Ziel
 
-Drei Zustände bekommen automatisch (alle 3 Tage, max. 5 Mails) eine Erinnerung:
+Wenn `portal.digital-dgigmbh.de` durch DENIC-Flag tot ist, sollen Bewerber & Mitarbeiter über eine Fallback-Domain (z.B. `digital-dgigmbh.com`) erreichbar bleiben — ohne Code-Deploy bei jeder Krise. Plus: Rettungs-Werkzeuge für bereits versendete Mails mit toten Links.
 
-1. **Bewerber akzeptiert, kein Account** — Willkommensmail erneut senden (auch wenn schon mal gesendet)
-2. **Account angelegt, E-Mail nicht bestätigt** — Confirmation-Mail erneut
-3. **Account bestätigt, Registrierung unvollständig** (Personalausweis, Vertrag, Pflichtfelder fehlen) — Erinnerung "Bitte abschließen"
-4. **Mitarbeiter ohne Buchung seit 7+ Tagen** — Erinnerung "Neue Aufträge warten auf dich"
+---
 
-Sequenz pro Zustand: Tag 3, 6, 9, 12, 15 nach dem letzten relevanten Event. Danach Stopp.
+## Teil 1 — Multi-Domain pro Tenant (Fundament)
 
-## Umsetzung
+### Datenmodell
+- Neue Tabelle `tenant_domains` (`id`, `tenant_id`, `domain`, `is_primary`, `created_at`)
+- Migration: bestehende `tenants.domain`-Werte einmalig nach `tenant_domains` kopieren (jeweils als `is_primary=true`)
+- `tenants.domain` bleibt vorerst als "primary cache" stehen → keine Breaking Changes für Alt-Code
 
-### 1. Migration: `reminder_log`
+### Lookup
+- `get_public_tenant_by_domain(_domain)` matcht zusätzlich gegen `tenant_domains.domain`
+- `getTenantDomain()` in `src/lib/domain-utils.ts` unverändert
+- `TenantContext` & `useTenantByDomain` profitieren automatisch
 
-```sql
-create table public.reminder_log (
-  id uuid primary key default gen_random_uuid(),
-  email text not null,
-  tenant_id uuid references public.tenants(id) on delete cascade,
-  reminder_type text not null,        -- 'invite' | 'confirm_email' | 'complete_registration'
-  attempt int not null,               -- 1..5
-  sent_at timestamptz not null default now(),
-  status text not null default 'sent',-- 'sent' | 'failed' | 'skipped'
-  error text
-);
-create index on public.reminder_log (email, reminder_type, sent_at desc);
-grant select, insert on public.reminder_log to service_role;
-alter table public.reminder_log enable row level security;
-create policy "service only" on public.reminder_log for all to service_role using (true);
-```
+### Admin-UI
+- Auf `/admin/tenants` Erweiterung des Tenant-Editors:
+  - Liste aller Domains des Tenants
+  - Button "+ Domain hinzufügen" (z.B. `portal.digital-dgigmbh.com`)
+  - Radio "Primary" — definiert die Domain, die in **neuen** Mails als Portal-URL erscheint
+  - Domain löschen (außer Primary)
 
-### 2. Neue Edge Function `send-reminders`
+### Mail-Versand
+- Reminder-Edge-Function (`send-reminders`) und alle Mail-Templates verwenden zentral eine Helper-Funktion `getTenantPortalUrl(tenant)` die immer die aktuelle Primary-Domain auflöst
+- Wechsel der Primary-Domain → ab sofort gehen alle neuen Mails über die neue Domain raus, **ohne Deploy**
 
-- Wird per `pg_cron` 1×/Tag um 09:00 Europe/Berlin getriggert (HTTP-Call gegen die Function).
-- Logik je Typ:
-  - **invite**: `applications` mit `status='akzeptiert'` JOIN `auth.users` LEFT — nur wo kein User existiert. Reuse von `send-invitation-email`-HTML, schreibt `reminder_log`.
-  - **confirm_email**: `auth.users` mit `email_confirmed_at IS NULL` → ruft intern `resend-signup-confirmation` Logik auf.
-  - **complete_registration**: `profiles` wo `onboarding_status != 'completed'` AND `email_confirmed_at IS NOT NULL` → branded Reminder-Mail mit Link `/onboarding`.
-- Gates pro Mail:
-  - count(reminder_log) < 5
-  - last sent > 3 Tage her
-  - relevantes Event (Annahme / Account-Erstellung / Bestätigung) > 3 Tage her
+---
 
-### 3. pg_cron Job (in Migration)
+## Teil 2 — Rettungs-Toolkit für alte Mails
 
-```sql
-select cron.schedule(
-  'send-reminders-daily', '0 8 * * *',
-  $$ select net.http_post(
-       url := 'https://<supabase-url>/functions/v1/send-reminders',
-       headers := jsonb_build_object('Authorization','Bearer <service-role>')
-     ); $$
-);
-```
+Vier Werkzeuge, alle optional kombinierbar:
 
-(Service-Role-Key wird über Vault gelesen, nicht inline.)
+### A) Bulk-Re-Send (Admin-Button)
+- Neue Admin-Seite `/admin/recovery` oder Button auf `/admin/reminders`
+- "Alle aktiven Empfänger mit neuer Portal-URL anschreiben"
+- Filter: nur Empfänger mit Status ≠ `abgeschlossen` (Bewerber: ≠ `abgelehnt`)
+- Rate-Limit: gleicher 600/12h-Mechanismus wie Reminder
+- Eigener Template-Typ `domain_recovery` → eigene Quota, blockiert nicht den normalen Reminder-Strom
+- Vorschau zeigt: "187 Empfänger werden über die nächsten ~4 Stunden angeschrieben"
 
-### 4. Admin-Button "Alt-Bewerber re-inviten"
+### B) Magic-Login-Generator (manuelle Rettungsleine)
+- Auf jedem Bewerber/Mitarbeiter-Detail eine neue Action "Login-Link generieren"
+- Erzeugt einmaligen Token in neuer Tabelle `magic_login_tokens` (24h gültig, single-use)
+- Token ist Link auf Fallback-Domain: `https://portal.digital-dgigmbh.com/login?magic=<token>`
+- Server-Route `/api/public/magic-login` validiert Token, erzeugt Supabase-Session, redirected
+- Admin kopiert Link, verschickt per WhatsApp/Telefon — Bewerber klickt, ist eingeloggt
 
-In `/admin/applications`: Button **"Erinnerungen jetzt senden"** der die Function manuell triggert (für den initialen Sweep der ~150 Bewerber).
+### C) WhatsApp-Fallback (optional, nur wenn gewünscht)
+- Voraussetzung: pro Empfänger gepflegte Telefonnummer + WhatsApp-Business-Setup
+- Eigene Edge-Function `send-whatsapp-recovery`
+- **Nicht Teil dieses Plans** — separat besprechen, wenn nötig
 
-### 5. Mail-Templates (in der Function inline, im Stil der bestehenden Mails)
+### D) DNS-Catch-All-Hinweis (kein Code)
+- Wenn `.de` wiederkommt: am Registrar einen 301-Redirect von `portal.digital-dgigmbh.de` → `portal.digital-dgigmbh.com` einrichten (oder umgekehrt)
+- Sicherheitsnetz für Bookmark-Reste, nicht für die akute Krise
 
-- **invite-reminder**: "Erinnerung: Deine Registrierung wartet auf dich" + Portal-Link
-- **confirm-reminder**: "Bitte bestätige deine E-Mail" + neuer Confirmation-Link
-- **completion-reminder**: "Bitte schließe deine Registrierung ab — es fehlen noch: {liste}" + Login-Link
+---
 
-## Was nach Approval passiert
+## Empfehlung
 
-1. Migration mit `reminder_log` + cron schedule
-2. Edge Function `supabase/functions/send-reminders/index.ts` (modular, drei Handler)
-3. Admin-Button im Bewerbungs-Screen
-4. Deploy-Hinweis: `supabase functions deploy send-reminders --no-verify-jwt` + `pg_cron`/`pg_net` Extensions aktivieren
+**Sofort umsetzen:** Teil 1 + A + B
+- Teil 1 macht zukünftige Krisen lösbar ohne Code-Deploy
+- A fängt 80% der bestehenden Empfänger automatisch ab
+- B ist die manuelle Notfall-Lösung für VIP-Leads
 
-## Offene Punkte (bitte bestätigen)
+**Später bei Bedarf:** C (WhatsApp)
 
-- **Intervall**: Tag 3, 6, 9, 12, 15 — okay so, oder anders staffeln (z.B. 3/5/8/12/15)?
-- **Sendezeit**: 09:00 Europe/Berlin?
-- **Stop-Bedingungen**: Soll bei Status `abgelehnt` oder gelöschter Bewerbung sofort gestoppt werden? (Default: ja)
-- **Initialer Sweep**: Sollen die ~150 Alt-Bewerber alle auf einmal eine Mail bekommen, oder über die normale Cron-Mechanik gestaffelt (Tag 1 = alle die seit >3 Tagen akzeptiert sind)?
+---
 
-## Update 2026-06-01 (Templates in DB)
+## Technische Details
 
-- Migration `20260601020000_reminder_templates.sql` fügt 8 Spalten auf `tenants` hinzu (`reminder_*_subject` / `reminder_*_body`).
-- Edge Function liest Subject + Body aus dem Tenant (Fallback auf eingebaute Defaults), führt Placeholder-Replacement aus (`{{first_name}}`, `{{tenant_name}}`, `{{portal_link}}`, `{{login_link}}`, `{{confirmation_link}}`, `{{booking_link}}`, `{{email}}`, `{{support_email}}`, `{{sender_name}}`) und unterstützt CTA-Syntax `{{cta:Label|URL}}` für Buttons.
-- Admin-UI `/admin/email-templates` hat neuen Tab **„Erinnerungen"** mit 4 Sub-Tabs (Einladung / E-Mail bestätigen / Registrierung abschließen / Keine Buchung), gleicher Editor + Live-Preview wie Welcome/Reset.
-- SMTP-Guard verschärft: `hasValidSmtp()` verlangt host/port/username/password/sender_email – kein Versand bei unvollständigem Tenant-SMTP, kein Fallback auf anderen Tenant.
+### Neue Dateien
+- `supabase/migrations/<timestamp>_tenant_domains.sql` — Tabelle, RLS, Backfill
+- `supabase/migrations/<timestamp>_magic_login_tokens.sql` — Token-Tabelle, Cleanup-Trigger
+- `src/lib/tenant-domain.functions.ts` — Server-Fns: addDomain, removeDomain, setPrimary
+- `src/lib/magic-login.functions.ts` — Server-Fn: generateMagicLink (Admin only)
+- `src/lib/recovery.functions.ts` — Server-Fn: enqueueDomainRecoveryMails
+- `src/routes/api/public/magic-login.ts` — Token einlösen, Session setzen
+- `src/routes/admin.recovery.tsx` — Recovery-Dashboard
+
+### Geänderte Dateien
+- `src/lib/domain-utils.ts` — keine Änderung (Helper bleibt)
+- `src/contexts/TenantContext.tsx`, `src/hooks/use-tenant.ts` — nutzen erweiterte RPC
+- `src/routes/admin.tenants.tsx` — Domain-Verwaltung-UI
+- `src/routes/admin.employees.$userId.tsx` + `admin.applications.$appId.tsx` — Button "Login-Link generieren"
+- `supabase/functions/send-reminders/index.ts` — `getTenantPortalUrl()` statt hartkodiertem `portal.<domain>`
+- Alle E-Mail-Templates (Reminder, Welcome, Contract, etc.) — Portal-URL über Helper
+
+### Sicherheit
+- `tenant_domains` mit RLS: nur Admins ihres Tenants dürfen lesen/schreiben
+- `magic_login_tokens`: einmalig, max. 24h, Status-Spalte (`unused`/`used`/`expired`)
+- Magic-Login server-side: rate-limit (max 10 Tokens/Bewerber/Tag), Audit-Log-Eintrag
+- Recovery-Bulk-Send: max. 1× pro 24h pro Tenant, vorher Vorschau-Pflicht
+
+### Was NICHT geändert wird
+- Bestehender Reminder-Mechanismus, SMTP-Validierung, Quiet Hours, 600/12h-Quota → unverändert
+- `tenants.domain`-Spalte bleibt (für Backward-Compat) — wird vom Server bei Primary-Change automatisch gespiegelt
+- Keine UI-Änderungen außerhalb Admin-Bereich
+
+---
+
+## Reihenfolge der Umsetzung
+
+1. Schema-Migrations (tenant_domains, magic_login_tokens)
+2. Lookup-RPC erweitern, Mail-Helper `getTenantPortalUrl`
+3. Admin-UI für Domain-Verwaltung
+4. Magic-Login-Generator + Public-Route
+5. Recovery-Dashboard + Bulk-Re-Send
+6. Reminder-Function auf Helper umstellen
+7. Test mit Test-Tenant, dann Deploy
+
+Nach Deploy: du registrierst `.com`, fügst sie im Admin-UI hinzu, machst sie zur Primary → ab dem Moment fließen alle neuen Mails über `.com`. Mit "Bulk-Re-Send" werden die 187 Alt-Empfänger gestaffelt neu angeschrieben.
