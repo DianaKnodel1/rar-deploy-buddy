@@ -48,8 +48,8 @@ function isQuietHours(): boolean {
 
 // ─── Anti-Spam Throttling ───
 // Max. echte Sends pro Tenant + Typ und Ausführung (verhindert Burst-Send / Domain-Flagging).
-// Bei stündlichem Cron = 24 Läufe/Tag → 25 * 24 = 600 Mails/Tag/Tenant/Typ.
-const MAX_SENDS_PER_RUN_PER_TENANT = 25;
+// Quiet-Hours 08–20 Uhr = 12 aktive Läufe/Tag → 50 * 12 = 600 Mails/12h/Tenant/Typ.
+const MAX_SENDS_PER_RUN_PER_TENANT = 50;
 // Wartezeit zwischen zwei echten Sends (Basis + zufällige Streuung)
 const SEND_DELAY_MIN_MS = 2500;
 const SEND_DELAY_MAX_MS = 5500;
