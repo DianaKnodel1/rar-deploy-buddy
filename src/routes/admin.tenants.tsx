@@ -25,6 +25,9 @@ import { SignatureGenerator } from "@/components/SignatureGenerator";
 function TenantForm({ tenant, onSaved }: { tenant?: Tenant; onSaved: () => void }) {
   const [name, setName] = useState(tenant?.name ?? "");
   const [domain, setDomain] = useState(tenant?.domain ?? "");
+  const [domainAliases, setDomainAliases] = useState<string>(
+    ((tenant as any)?.domain_aliases as string[] | undefined ?? []).join("\n")
+  );
   const [primaryColor, setPrimaryColor] = useState(tenant?.primary_color ?? "#000000");
   const [heroTitle, setHeroTitle] = useState(tenant?.hero_title ?? "Werde Teil unseres Teams");
   const [heroSubtitle, setHeroSubtitle] = useState(tenant?.hero_subtitle ?? "");
@@ -83,9 +86,17 @@ function TenantForm({ tenant, onSaved }: { tenant?: Tenant; onSaved: () => void 
       }
     }
     setLoading(true);
+    // Aliases: pro Zeile eine Domain, getrimmt, dedupliziert, ohne Primary
+    const aliasList = Array.from(new Set(
+      domainAliases
+        .split(/[\n,;]+/)
+        .map((s) => s.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, ""))
+        .filter((s) => s.length > 2 && s !== domain.trim().toLowerCase())
+    ));
     const payload = {
       name: name.trim(),
       domain: domain.trim().toLowerCase(),
+      domain_aliases: aliasList,
       primary_color: primaryColor,
       hero_title: heroTitle.trim(),
       hero_subtitle: heroSubtitle.trim(),
