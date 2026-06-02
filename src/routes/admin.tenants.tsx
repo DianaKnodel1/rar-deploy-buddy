@@ -153,6 +153,21 @@ function TenantForm({ tenant, onSaved }: { tenant?: Tenant; onSaved: () => void 
             <Input value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="bcutheme.de" className="mt-1" />
           </div>
         </div>
+        <div>
+          <Label className="text-xs">Fallback-Domains (Aliases)</Label>
+          <Textarea
+            value={domainAliases}
+            onChange={(e) => setDomainAliases(e.target.value)}
+            placeholder={"bcutheme.com\nbcu-portal.de"}
+            className="mt-1 font-mono text-xs"
+            rows={3}
+          />
+          <p className="text-[10px] text-muted-foreground mt-1">
+            Eine Domain pro Zeile. Wird die Primary-Domain (z.B. <code>.de</code>) blockiert oder vom Registrar geflaggt,
+            kannst du jederzeit eine Alias-Domain zur neuen Primary machen — alle neuen Login-Mails gehen dann darüber raus,
+            ohne Code-Deploy. Bewerber, die <code>portal.&lt;alias&gt;</code> aufrufen, landen ebenfalls im richtigen Tenant.
+          </p>
+        </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
             <Label className="text-xs">Primärfarbe</Label>
